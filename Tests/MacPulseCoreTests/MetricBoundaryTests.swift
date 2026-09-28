@@ -22,6 +22,34 @@ func testMemoryTrendGeometryHandlesEmptySinglePointAndFlatValues() {
     expect(flat.allSatisfy { $0.x.isFinite && $0.y.isFinite }, "flat history produces finite coordinates")
 }
 
+func testNetworkCounterAccumulatorKeepsTotalsMonotonicWhenInterfaceDeparts() {
+    var accumulator = NetworkCounterAccumulator()
+    _ = accumulator.update([
+        "en0": .init(receivedBytes: 1_000, sentBytes: 500),
+        "utun0": .init(receivedBytes: 10_000, sentBytes: 5_000)
+    ])
+
+    let established = accumulator.update([
+        "en0": .init(receivedBytes: 1_500, sentBytes: 750),
+        "utun0": .init(receivedBytes: 10_400, sentBytes: 5_200)
+    ])
+    expect(established?.receivedBytes == 900, "both interfaces contribute deltas while present")
+    expect(established?.sentBytes == 450, "both interfaces contribute deltas while present")
+
+    let afterDeparture = accumulator.update([
+        "en0": .init(receivedBytes: 1_500, sentBytes: 750)
+    ])
+    expect(afterDeparture?.receivedBytes == 900, "departed interface's accumulated bytes stay in the totals")
+    expect(afterDeparture?.sentBytes == 450, "departed interface's accumulated bytes stay in the totals")
+
+    let afterRejoin = accumulator.update([
+        "en0": .init(receivedBytes: 1_600, sentBytes: 800),
+        "utun0": .init(receivedBytes: 100, sentBytes: 50)
+    ])
+    expect(afterRejoin?.receivedBytes == 1_000, "rejoined interface establishes a fresh baseline without double counting")
+    expect(afterRejoin?.sentBytes == 500, "rejoined interface establishes a fresh baseline without double counting")
+}
+
 func runMetricBoundaryTests() {
     testDecodesHighBitProcessorTicksWithoutSignedOverflow()
     testMemoryTrendGeometryHandlesEmptySinglePointAndFlatValues()

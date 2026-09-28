@@ -155,6 +155,17 @@ func testHistoryFileStoreRoundTripsAndToleratesCorruption() throws {
     expect(store.load().isEmpty, "corrupt history file loads as empty instead of crashing")
 }
 
+func testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead() {
+    let short: [Double?] = [1, nil, 3]
+    expect(HistoryAnalyzer.downsample(short, maxPoints: 600) == short, "series shorter than the cap passes through unchanged")
+
+    let values: [Double?] = (0..<12).map { Double($0) }
+    let downsampled = HistoryAnalyzer.downsample(values, maxPoints: 4)
+    expect(downsampled == [0, 3, 6, 9], "long series is evenly decimated across the whole window")
+    expect(HistoryAnalyzer.downsample(values, maxPoints: 600).count == 12, "decimation never grows a series")
+    expect(HistoryAnalyzer.downsample([nil, 5, nil], maxPoints: 0) == [nil, 5, nil], "non-positive cap passes the series through")
+}
+
 func runMetricsHistoryTests() throws {
     testAggregatorEmitsBucketWhenMinuteRolls()
     testAggregatorFlushEmitsPartialBucketWithoutLosingData()
@@ -163,4 +174,5 @@ func runMetricsHistoryTests() throws {
     testMinuteSeriesFiltersWithinRangeAndSortsAscending()
     testStatisticsComputeAveragePeakAndMinimum()
     try testHistoryFileStoreRoundTripsAndToleratesCorruption()
+    testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead()
 }

@@ -186,6 +186,14 @@ public enum HistoryAnalyzer {
         )
     }
 
+    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {
+        guard maxPoints > 0, values.count > maxPoints else { return values }
+        let step = Double(values.count) / Double(maxPoints)
+        return (0..<maxPoints).map { index in
+            values[Int((Double(index) * step).rounded(.down))]
+        }
+    }
+
     private static func merge(_ older: MinuteBucket, _ newer: MinuteBucket) -> MinuteBucket {
         MinuteBucket(
             minuteStart: older.minuteStart,

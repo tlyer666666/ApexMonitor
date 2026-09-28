@@ -57,10 +57,11 @@ struct SeriesChart: View {
     }
 
     private func resolvedValues() -> [Double?] {
-        values.suffix(600).map { value in
+        let clean = values.map { value -> Double? in
             guard let value, value.isFinite else { return nil }
             return max(value, 0)
         }
+        return HistoryAnalyzer.downsample(clean, maxPoints: 600)
     }
 
     private func domainMax(from values: [Double?]) -> Double {
@@ -98,16 +99,16 @@ struct HistoryChartCard: View {
     let percentDomain: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let stats = metrics.map { HistoryAnalyzer.statistics(points, metric: $0.keyPath) }
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(title, systemImage: symbol)
                     .font(.headline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if let primary = metrics.first {
-                    let stats = HistoryAnalyzer.statistics(points, metric: primary.keyPath)
-                    StatChip(label: "平均", value: primary.formatter(stats.average))
-                    StatChip(label: "峰值", value: primary.formatter(stats.peak))
+                if let primary = stats.first {
+                    StatChip(label: "平均", value: metrics[0].formatter(primary.average))
+                    StatChip(label: "峰值", value: metrics[0].formatter(primary.peak))
                 }
             }
 
@@ -122,11 +123,10 @@ struct HistoryChartCard: View {
                 HStack(spacing: 12) {
                     ForEach(metrics.indices, id: \.self) { index in
                         let metric = metrics[index]
-                        let stats = HistoryAnalyzer.statistics(points, metric: metric.keyPath)
                         HStack(spacing: 4) {
                             Circle().fill(index == 0 ? tint : tint.opacity(0.55)).frame(width: 7, height: 7)
                             Text(metric.name).font(.caption).foregroundStyle(.secondary)
-                            Text(metric.formatter(stats.average))
+                            Text(metric.formatter(stats[index].average))
                                 .font(.system(.caption, design: .rounded).weight(.medium).monospacedDigit())
                         }
                     }

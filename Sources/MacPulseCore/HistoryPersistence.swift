@@ -34,12 +34,7 @@ public struct HistoryFileStore: Sendable {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(buckets)
-            let temporaryURL = directory.appendingPathComponent(fileName + ".tmp")
-            try data.write(to: temporaryURL, options: .atomic)
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                try FileManager.default.removeItem(at: fileURL)
-            }
-            try FileManager.default.moveItem(at: temporaryURL, to: fileURL)
+            try data.write(to: fileURL, options: .atomic)
             return true
         } catch {
             return false

@@ -126,7 +126,7 @@ func testInvalidTimeAndMissingCountersStayUnavailable() {
     expect(missing.diskReadBytesPerSecond == nil, "missing disk counter remains unavailable")
 }
 
-func testNetworkRatesHandle32BitCounterWraparound() {
+func testShrinkingNetworkTotalsNeverFabricateRate() {
     var calculator = MetricsCalculator()
     _ = calculator.update(.init(
         uptime: 1,
@@ -135,8 +135,8 @@ func testNetworkRatesHandle32BitCounterWraparound() {
         memoryTotalBytes: 2,
         diskReadBytes: 0,
         diskWrittenBytes: 0,
-        networkReceivedBytes: UInt64(UInt32.max) - 100,
-        networkSentBytes: UInt64(UInt32.max) - 50
+        networkReceivedBytes: 4_000_000_000,
+        networkSentBytes: 100
     ))
 
     let snapshot = calculator.update(.init(
@@ -147,39 +147,10 @@ func testNetworkRatesHandle32BitCounterWraparound() {
         diskReadBytes: 0,
         diskWrittenBytes: 0,
         networkReceivedBytes: 50,
-        networkSentBytes: 25
+        networkSentBytes: 100
     ))
 
-    expectNear(snapshot.networkReceiveBytesPerSecond, 151, "network receive rate includes a single 32-bit counter wrap")
-    expectNear(snapshot.networkSendBytesPerSecond, 76, "network send rate includes a single 32-bit counter wrap")
-}
-
-func testNetworkCounterResetDoesNotLookLikeWraparound() {
-    var calculator = MetricsCalculator()
-    _ = calculator.update(.init(
-        uptime: 1,
-        cpu: .init(user: 1, system: 1, idle: 8, nice: 0),
-        memoryUsedBytes: 1,
-        memoryTotalBytes: 2,
-        diskReadBytes: 0,
-        diskWrittenBytes: 0,
-        networkReceivedBytes: 5_000,
-        networkSentBytes: 2_000
-    ))
-
-    let snapshot = calculator.update(.init(
-        uptime: 2,
-        cpu: .init(user: 2, system: 2, idle: 16, nice: 0),
-        memoryUsedBytes: 1,
-        memoryTotalBytes: 2,
-        diskReadBytes: 0,
-        diskWrittenBytes: 0,
-        networkReceivedBytes: 25,
-        networkSentBytes: 10
-    ))
-
-    expect(snapshot.networkReceiveBytesPerSecond == nil, "ordinary network counter reset stays unavailable")
-    expect(snapshot.networkSendBytesPerSecond == nil, "ordinary network send counter reset stays unavailable")
+    expect(snapshot.networkReceiveBytesPerSecond == nil, "shrinking runtime network totals produce no rate instead of a fabricated spike")
 }
 
 func runMetricsCalculatorTests() {
@@ -187,6 +158,5 @@ func runMetricsCalculatorTests() {
     testMultiCoreCPUIsNormalizedToTotalProcessorCapacity()
     testFirstSampleAndCounterResetDoNotInventRates()
     testInvalidTimeAndMissingCountersStayUnavailable()
-    testNetworkRatesHandle32BitCounterWraparound()
-    testNetworkCounterResetDoesNotLookLikeWraparound()
+    testShrinkingNetworkTotalsNeverFabricateRate()
 }

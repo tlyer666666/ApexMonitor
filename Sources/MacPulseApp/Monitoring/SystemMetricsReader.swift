@@ -21,11 +21,13 @@ struct SystemMetricsReader {
     }
 
     private func readProcessorTicks() -> ProcessorTicks? {
+        let host = mach_host_self()
+        defer { mach_port_deallocate(mach_task_self_, host) }
         var processorCount: natural_t = 0
         var infoCount: mach_msg_type_number_t = 0
         var info: processor_info_array_t?
         let result = host_processor_info(
-            mach_host_self(),
+            host,
             PROCESSOR_CPU_LOAD_INFO,
             &processorCount,
             &info,
@@ -53,19 +55,21 @@ struct SystemMetricsReader {
     }
 
     private func readMemory() -> (used: UInt64, total: UInt64)? {
+        let host = mach_host_self()
+        defer { mach_port_deallocate(mach_task_self_, host) }
         var statistics = vm_statistics64_data_t()
         var count = mach_msg_type_number_t(
             MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size
         )
         let result = withUnsafeMutablePointer(to: &statistics) { pointer in
             pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                host_statistics64(host, HOST_VM_INFO64, $0, &count)
             }
         }
         guard result == KERN_SUCCESS else { return nil }
 
         var pageSize: vm_size_t = 0
-        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS,
+        guard host_page_size(host, &pageSize) == KERN_SUCCESS,
               pageSize > 0 else { return nil }
 
         let usedPages = UInt64(statistics.active_count)

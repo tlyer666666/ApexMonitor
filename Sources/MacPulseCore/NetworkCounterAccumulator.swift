@@ -25,6 +25,7 @@ public struct NetworkCounterAccumulator {
     }
 
     private var states: [String: State] = [:]
+    private var retired = NetworkInterfaceCounters(receivedBytes: 0, sentBytes: 0)
 
     public init() {}
 
@@ -51,14 +52,22 @@ public struct NetworkCounterAccumulator {
             states[name] = state
         }
 
-        for name in states.keys where current[name] == nil {
-            states.removeValue(forKey: name)
+        let departed = states.keys.filter { current[$0] == nil }
+        for name in departed {
+            guard let state = states.removeValue(forKey: name) else { continue }
+            retired = NetworkInterfaceCounters(
+                receivedBytes: retired.receivedBytes &+ state.total.receivedBytes,
+                sentBytes: retired.sentBytes &+ state.total.sentBytes
+            )
         }
 
-        let totals = states.values.reduce((received: UInt64(0), sent: UInt64(0))) { partial, state in
-            (partial.received &+ state.total.receivedBytes, partial.sent &+ state.total.sentBytes)
+        var totalReceived = retired.receivedBytes
+        var totalSent = retired.sentBytes
+        for state in states.values {
+            totalReceived = totalReceived &+ state.total.receivedBytes
+            totalSent = totalSent &+ state.total.sentBytes
         }
-        return NetworkCounterTotals(receivedBytes: totals.received, sentBytes: totals.sent)
+        return NetworkCounterTotals(receivedBytes: totalReceived, sentBytes: totalSent)
     }
 
     private func delta(from old: UInt64, to new: UInt64) -> UInt64 {

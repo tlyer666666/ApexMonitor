@@ -44,29 +44,11 @@ public struct MetricsCalculator {
             memoryPercent: memoryPercent,
             diskReadBytesPerSecond: rate(from: previous?.diskReadBytes, to: sample.diskReadBytes, elapsed: elapsed),
             diskWriteBytesPerSecond: rate(from: previous?.diskWrittenBytes, to: sample.diskWrittenBytes, elapsed: elapsed),
-            networkReceiveBytesPerSecond: networkRate(from: previous?.networkReceivedBytes, to: sample.networkReceivedBytes, elapsed: elapsed),
-            networkSendBytesPerSecond: networkRate(from: previous?.networkSentBytes, to: sample.networkSentBytes, elapsed: elapsed)
+            networkReceiveBytesPerSecond: rate(from: previous?.networkReceivedBytes, to: sample.networkReceivedBytes, elapsed: elapsed),
+            networkSendBytesPerSecond: rate(from: previous?.networkSentBytes, to: sample.networkSentBytes, elapsed: elapsed)
         )
         previous = sample
         return snapshot
-    }
-
-    private func networkRate(from old: UInt64?, to new: UInt64?, elapsed: Double?) -> Double? {
-        guard let old, let new else { return nil }
-        let delta: UInt64
-        if new >= old {
-            delta = new - old
-        } else if old <= UInt64(UInt32.max),
-                  new <= UInt64(UInt32.max) / 10,
-                  old >= UInt64(UInt32.max) * 9 / 10 {
-            delta = UInt64(UInt32.max) - old + new + 1
-        } else {
-            return nil
-        }
-        guard let elapsed else { return nil }
-        let result = Double(delta) / elapsed
-        guard result.isFinite, result >= 0 else { return nil }
-        return result
     }
 
     private func rate(from old: UInt64?, to new: UInt64?, elapsed: Double?) -> Double? {

@@ -24,11 +24,16 @@ final class MonitorStore: ObservableObject {
     }
 
     func start() {
-        let loaded = HistoryAnalyzer.prunedBuckets(
-            HistoryAnalyzer.mergedBuckets(historyFile.load()),
-            now: Date()
-        )
-        minuteBuckets = loaded
+        let file = historyFile
+        historyQueue.async { [weak self] in
+            let loaded = HistoryAnalyzer.prunedBuckets(
+                HistoryAnalyzer.mergedBuckets(file.load()),
+                now: Date()
+            )
+            Task { @MainActor [weak self] in
+                self?.minuteBuckets = loaded
+            }
+        }
         sampler.start { [weak self] snapshot in
             Task { @MainActor [weak self] in
                 self?.accept(snapshot)
@@ -42,7 +47,11 @@ final class MonitorStore: ObservableObject {
             minuteBuckets.append(partial)
             minuteBuckets = HistoryAnalyzer.prunedBuckets(minuteBuckets, now: Date())
         }
-        historyFile.save(minuteBuckets)
+        // Serializing the final save through historyQueue prevents a queued
+        // boundary save from overwriting it with stale buckets afterwards.
+        historyQueue.sync {
+            _ = historyFile.save(minuteBuckets)
+        }
     }
 
     func points(for range: HistoryRange) -> [MetricPoint] {
@@ -50,6 +59,8 @@ final class MonitorStore: ObservableObject {
         let cutoff = now.addingTimeInterval(-range.seconds)
 
         if range.seconds <= 3_600 {
+            // Grace period: require the per-second buffer to cover at least
+            // half the range before preferring it over minute buckets.
             let samples = recentSamples.filter { $0.date > cutoff }
             if samples.count >= 2,
                let oldest = samples.first,

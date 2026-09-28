@@ -11,10 +11,11 @@ final class MetricsSampler {
         guard timer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .seconds(1), leeway: .milliseconds(150))
-        timer.setEventHandler { [reader] in
-            let counters = reader.readNetworkInterfaces()
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let counters = self.reader.readNetworkInterfaces()
             let totals = counters.flatMap { self.networkAccumulator.update($0) }
-            let sample = reader.read(networkCounters: totals)
+            let sample = self.reader.read(networkCounters: totals)
             let snapshot = self.calculator.update(sample)
             deliver(snapshot)
         }

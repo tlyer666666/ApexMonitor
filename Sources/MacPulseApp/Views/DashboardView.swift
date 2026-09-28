@@ -7,12 +7,13 @@ struct DashboardView: View {
     private var metrics: MetricsSnapshot? { store.snapshot }
 
     var body: some View {
-        ScrollView {
+        let points = store.points(for: range)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 rangePicker
                 currentGrid
-                chartGrid
+                chartGrid(points)
                 footer
             }
             .padding(22)
@@ -90,13 +91,13 @@ struct DashboardView: View {
         }
     }
 
-    private var chartGrid: some View {
+    private func chartGrid(_ points: [MetricPoint]) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
             HistoryChartCard(
                 title: "处理器",
                 symbol: "cpu",
                 tint: .blue,
-                points: store.points(for: range),
+                points: points,
                 metrics: [("使用率", \.cpu, MetricsFormatter.percent)],
                 percentDomain: true
             )
@@ -104,7 +105,7 @@ struct DashboardView: View {
                 title: "内存",
                 symbol: "memorychip",
                 tint: .purple,
-                points: store.points(for: range),
+                points: points,
                 metrics: [("占用", \.memory, MetricsFormatter.percent)],
                 percentDomain: true
             )
@@ -112,7 +113,7 @@ struct DashboardView: View {
                 title: "磁盘 I/O",
                 symbol: "internaldrive",
                 tint: .orange,
-                points: store.points(for: range),
+                points: points,
                 metrics: [
                     ("读取", \.diskRead, MetricsFormatter.bytesPerSecond),
                     ("写入", \.diskWrite, MetricsFormatter.bytesPerSecond)
@@ -123,7 +124,7 @@ struct DashboardView: View {
                 title: "网络",
                 symbol: "network",
                 tint: .green,
-                points: store.points(for: range),
+                points: points,
                 metrics: [
                     ("接收", \.networkReceive, MetricsFormatter.bytesPerSecond),
                     ("发送", \.networkSend, MetricsFormatter.bytesPerSecond)
