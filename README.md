@@ -23,6 +23,12 @@ Scripts/build.sh debug
 # 生成菜单栏应用包
 Scripts/package-app.sh
 
+# 安装到 ~/Applications 并在桌面创建快捷方式（重建后重跑即可更新）
+Scripts/install.sh
+
+# 单独重新生成应用图标（打包脚本会自动调用）
+Scripts/make-icon.sh
+
 # 启动应用
 open dist/MacPulse.app
 

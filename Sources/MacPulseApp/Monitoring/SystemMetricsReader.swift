@@ -3,6 +3,17 @@ import Foundation
 import IOKit
 import IOKit.storage
 
+struct InterfaceDetail: Sendable, Equatable, Identifiable {
+    let name: String
+    let isUp: Bool
+    let isRunning: Bool
+    let ipv4: [String]
+    let ipv6: [String]
+
+    var id: String { name }
+    var isConnected: Bool { isUp && isRunning }
+}
+
 struct SystemMetricsReader {
     func read(networkCounters: NetworkCounterTotals? = nil) -> RawMetricsSample {
         let memory = readMemory()
@@ -110,6 +121,76 @@ struct SystemMetricsReader {
             service = IOIteratorNext(iterator)
         }
         return foundStatistics ? (readTotal, writtenTotal) : nil
+    }
+
+    func readInterfaceDetails() -> [InterfaceDetail] {
+        var first: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&first) == 0, let first else { return [] }
+        defer { freeifaddrs(first) }
+
+        struct Draft {
+            var up = false
+            var running = false
+            var ipv4: [String] = []
+            var ipv6: [String] = []
+        }
+
+        var drafts: [String: Draft] = [:]
+        var order: [String] = []
+        var current: UnsafeMutablePointer<ifaddrs>? = first
+        while let entry = current?.pointee {
+            defer { current = entry.ifa_next }
+            guard let namePointer = entry.ifa_name, let address = entry.ifa_addr else { continue }
+            let name = String(cString: namePointer)
+            if drafts[name] == nil {
+                order.append(name)
+                drafts[name] = Draft()
+            }
+
+            switch address.pointee.sa_family {
+            case UInt8(AF_LINK):
+                drafts[name]?.up = entry.ifa_flags & UInt32(IFF_UP) != 0
+                drafts[name]?.running = entry.ifa_flags & UInt32(IFF_RUNNING) != 0
+            case UInt8(AF_INET):
+                if let text = Self.addressString(address) {
+                    drafts[name]?.ipv4.append(text)
+                }
+            case UInt8(AF_INET6):
+                if let text = Self.addressString(address) {
+                    drafts[name]?.ipv6.append(text)
+                }
+            default:
+                break
+            }
+        }
+
+        return order.compactMap { name in
+            guard let draft = drafts[name] else { return nil }
+            return InterfaceDetail(
+                name: name,
+                isUp: draft.up,
+                isRunning: draft.running,
+                ipv4: draft.ipv4,
+                ipv6: draft.ipv6
+            )
+        }
+    }
+
+    private static func addressString(_ address: UnsafeMutablePointer<sockaddr>) -> String? {
+        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let status = host.withUnsafeMutableBufferPointer { buffer in
+            getnameinfo(
+                address,
+                socklen_t(address.pointee.sa_len),
+                buffer.baseAddress,
+                socklen_t(buffer.count),
+                nil,
+                0,
+                NI_NUMERICHOST
+            )
+        }
+        guard status == 0 else { return nil }
+        return String(cString: host)
     }
 
     func readNetworkInterfaces() -> [String: NetworkInterfaceCounters]? {

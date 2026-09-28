@@ -16,11 +16,26 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var snapshot: MetricsSnapshot?
     @Published private(set) var recentSamples: [TimestampedSnapshot] = []
     @Published private(set) var minuteBuckets: [MinuteBucket] = []
+    @Published private(set) var processSummary: ProcessSummary?
+    @Published private(set) var volumes: [VolumeSpace] = []
+    @Published private(set) var interfaces: [InterfaceDetail] = []
+    @Published private(set) var interfaceRuntimeTotals: [String: NetworkInterfaceCounters] = [:]
+    @Published private(set) var pathStatus: NetworkPathStatus?
+    @Published private(set) var loadAverage: LoadAverage?
+    /// Navigation and range state live here (not in SwiftUI @State) so the
+    /// dashboard window can stop detail sampling on close and still restore
+    /// the selected range when reopened.
+    @Published var navigationPath: [MetricCategory] = []
+    @Published var selectedRange: HistoryRange = .fifteenMinutes
 
     private let sampler = MetricsSampler()
     private let historyFile: HistoryFileStore
     private var aggregator = MetricsAggregator()
     private let historyQueue = DispatchQueue(label: "com.macpulse.history", qos: .utility)
+    private let detailQueue = DispatchQueue(label: "com.macpulse.detail", qos: .utility)
+    private let detailEngine = DetailEngine()
+    private var detailTimer: DispatchSourceTimer?
+    private var pathMonitor: NetworkPathMonitor?
     private var historyLoaded = false
     private var bucketsSinceSave = 0
     private var minutePathCache: (range: HistoryRange, bucketCount: Int, minute: Date, points: [MetricPoint])?
@@ -40,9 +55,21 @@ final class MonitorStore: ObservableObject {
                 self?.adoptLoadedHistory(loaded)
             }
         }
-        sampler.start { [weak self] snapshot in
+        sampler.start(
+            deliver: { [weak self] snapshot in
+                Task { @MainActor [weak self] in
+                    self?.accept(snapshot)
+                }
+            },
+            onInterfaceTotals: { [weak self] totals in
+                Task { @MainActor [weak self] in
+                    self?.interfaceRuntimeTotals = totals
+                }
+            }
+        )
+        pathMonitor = NetworkPathMonitor { [weak self] status in
             Task { @MainActor [weak self] in
-                self?.accept(snapshot)
+                self?.pathStatus = status
             }
         }
     }
@@ -59,6 +86,9 @@ final class MonitorStore: ObservableObject {
 
     func stop() {
         sampler.stop()
+        stopDetailTimer()
+        pathMonitor?.cancel()
+        pathMonitor = nil
         if let partial = aggregator.flush(at: Date()) {
             minuteBuckets.append(partial)
         }
@@ -129,4 +159,74 @@ final class MonitorStore: ObservableObject {
             file.save(buckets)
         }
     }
+
+    // MARK: - Live detail sampling
+
+    /// Category-dependent detail sampling. Runs only while a detail page is
+    /// open, at ~0.5 Hz, on a utility queue; process/volume/interface reads
+    /// never touch the main thread. The process table is re-baselined on each
+    /// begin so the first tick reflects the current moment, not the closed gap.
+    func beginLiveDetail(_ category: MetricCategory) {
+        detailQueue.async { [detailEngine] in
+            detailEngine.activeCategory = category
+            detailEngine.processTable = ProcessTable()
+        }
+        startDetailTimerIfNeeded()
+    }
+
+    func endLiveDetail() {
+        detailQueue.async { [detailEngine] in
+            detailEngine.activeCategory = nil
+        }
+        stopDetailTimer()
+    }
+
+    private func startDetailTimerIfNeeded() {
+        guard detailTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: detailQueue)
+        timer.schedule(deadline: .now(), repeating: .seconds(2), leeway: .milliseconds(300))
+        timer.setEventHandler { [weak self, detailEngine] in
+            guard let self else { return }
+            guard let category = detailEngine.activeCategory else { return }
+            let now = Date().timeIntervalSince1970
+            var summary: ProcessSummary?
+            var load: LoadAverage?
+            var volumes: [VolumeSpace] = []
+            var interfaces: [InterfaceDetail] = []
+
+            switch category {
+            case .cpu, .memory:
+                summary = detailEngine.processTable.update(detailEngine.processSampler.read(), at: now)
+                load = SystemDetailReader.loadAverage()
+            case .disk:
+                volumes = VolumeSpaceReader.read()
+            case .network:
+                interfaces = detailEngine.systemReader.readInterfaceDetails()
+            }
+
+            Task { @MainActor [weak self] in
+                self?.processSummary = summary
+                self?.loadAverage = load
+                self?.volumes = volumes
+                self?.interfaces = interfaces
+            }
+        }
+        detailTimer = timer
+        timer.resume()
+    }
+
+    private func stopDetailTimer() {
+        detailTimer?.setEventHandler {}
+        detailTimer?.cancel()
+        detailTimer = nil
+    }
+}
+
+/// State confined to the detail queue; touches the process table and the
+/// reader only from that serial queue.
+private final class DetailEngine: @unchecked Sendable {
+    var activeCategory: MetricCategory?
+    let processSampler = ProcessSampler()
+    let systemReader = SystemMetricsReader()
+    var processTable = ProcessTable()
 }

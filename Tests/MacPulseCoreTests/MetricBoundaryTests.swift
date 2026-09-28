@@ -41,6 +41,8 @@ func testNetworkCounterAccumulatorKeepsTotalsMonotonicWhenInterfaceDeparts() {
     ])
     expect(afterDeparture?.receivedBytes == 900, "departed interface's accumulated bytes stay in the totals")
     expect(afterDeparture?.sentBytes == 450, "departed interface's accumulated bytes stay in the totals")
+    expect(accumulator.runtimeTotalsByInterface()["en0"]?.receivedBytes == 500, "per-interface runtime totals track the remaining interface")
+    expect(accumulator.runtimeTotalsByInterface()["utun0"] == nil, "departed interfaces leave the per-interface runtime map")
 
     let afterRejoin = accumulator.update([
         "en0": .init(receivedBytes: 1_600, sentBytes: 800),

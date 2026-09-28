@@ -167,7 +167,10 @@ struct CurrentMetricCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

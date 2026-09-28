@@ -13,7 +13,7 @@ public struct MetricsCalculator {
             return value
         }()
 
-        let cpuPercent: Double? = {
+        let cpuBreakdown: (user: Double, system: Double, nice: Double, idle: Double)? = {
             guard elapsed != nil,
                   let previous,
                   let oldCPU = previous.cpu,
@@ -24,7 +24,13 @@ public struct MetricsCalculator {
                   let nice = nonnegativeDelta(oldCPU.nice, newCPU.nice) else { return nil }
             let total = user + system + idle + nice
             guard total > 0 else { return nil }
-            let value = Double(user + system + nice) / Double(total) * 100
+            let ratio: (UInt64) -> Double = { Double($0) / Double(total) * 100 }
+            return (ratio(user), ratio(system), ratio(nice), ratio(idle))
+        }()
+
+        let cpuPercent: Double? = {
+            guard let breakdown = cpuBreakdown else { return nil }
+            let value = breakdown.user + breakdown.system + breakdown.nice
             guard value.isFinite else { return nil }
             return min(max(value, 0), 100)
         }()
@@ -39,6 +45,10 @@ public struct MetricsCalculator {
         let snapshot = MetricsSnapshot(
             timestamp: sample.uptime,
             cpuPercent: cpuPercent,
+            cpuUserPercent: cpuBreakdown?.user,
+            cpuSystemPercent: cpuBreakdown?.system,
+            cpuNicePercent: cpuBreakdown?.nice,
+            cpuIdlePercent: cpuBreakdown?.idle,
             memoryUsedBytes: sample.memoryUsedBytes,
             memoryTotalBytes: sample.memoryTotalBytes,
             memoryPercent: memoryPercent,

@@ -25,6 +25,10 @@ func testCalculatesCPUAndByteRatesFromCounterDeltas() {
     ))
 
     expectNear(snapshot.cpuPercent, 75, "CPU utilization is derived from cumulative tick deltas")
+    expectNear(snapshot.cpuUserPercent, 50, "user tick share is computed from the same deltas")
+    expectNear(snapshot.cpuSystemPercent, 25, "system tick share is computed from the same deltas")
+    expectNear(snapshot.cpuIdlePercent, 25, "idle tick share is computed from the same deltas")
+    expectNear(snapshot.cpuNicePercent, 0, "nice tick share is computed from the same deltas")
     expectNear(snapshot.diskReadBytesPerSecond, 500, "disk read rate divides byte delta by elapsed time")
     expectNear(snapshot.diskWriteBytesPerSecond, 200, "disk write rate divides byte delta by elapsed time")
     expectNear(snapshot.networkReceiveBytesPerSecond, 500, "network receive rate divides byte delta by elapsed time")

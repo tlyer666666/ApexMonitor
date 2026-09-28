@@ -29,6 +29,11 @@ public struct NetworkCounterAccumulator {
 
     public init() {}
 
+    /// Runtime-accumulated deltas per interface currently being tracked.
+    public func runtimeTotalsByInterface() -> [String: NetworkInterfaceCounters] {
+        states.mapValues { $0.total }
+    }
+
     public mutating func update(_ current: [String: NetworkInterfaceCounters]) -> NetworkCounterTotals? {
         guard !current.isEmpty else {
             // Retire remaining states so their accumulated bytes survive a

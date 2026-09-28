@@ -14,11 +14,18 @@ mkdir -p "$MACOS"
 cp "$ROOT/.build/release/MacPulse" "$MACOS/MacPulse"
 chmod 755 "$MACOS/MacPulse"
 
+"$ROOT/Scripts/make-icon.sh"
+RES="$CONTENTS/Resources"
+mkdir -p "$RES"
+cp "$ROOT/.build/icon/MacPulse.icns" "$RES/MacPulse.icns"
+
 cat > "$CONTENTS/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleIconFile</key>
+    <string>MacPulse</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>

@@ -7,7 +7,10 @@ final class MetricsSampler {
     private var networkAccumulator = NetworkCounterAccumulator()
     private var timer: DispatchSourceTimer?
 
-    func start(deliver: @escaping @Sendable (MetricsSnapshot) -> Void) {
+    func start(
+        deliver: @escaping @Sendable (MetricsSnapshot) -> Void,
+        onInterfaceTotals: @escaping @Sendable ([String: NetworkInterfaceCounters]) -> Void
+    ) {
         guard timer == nil else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .seconds(1), leeway: .milliseconds(150))
@@ -18,6 +21,7 @@ final class MetricsSampler {
             let sample = self.reader.read(networkCounters: totals)
             let snapshot = self.calculator.update(sample)
             deliver(snapshot)
+            onInterfaceTotals(self.networkAccumulator.runtimeTotalsByInterface())
         }
         self.timer = timer
         timer.resume()

@@ -15,11 +15,13 @@ swiftc \
   Sources/MacPulseCore/MemoryTrendGeometry.swift \
   Sources/MacPulseCore/MetricsHistory.swift \
   Sources/MacPulseCore/HistoryPersistence.swift \
+  Sources/MacPulseCore/ProcessTable.swift \
   Tests/MacPulseCoreTests/TestMain.swift \
   Tests/MacPulseCoreTests/MetricsCalculatorTests.swift \
   Tests/MacPulseCoreTests/MetricsFormatterTests.swift \
   Tests/MacPulseCoreTests/MetricBoundaryTests.swift \
   Tests/MacPulseCoreTests/MetricsHistoryTests.swift \
+  Tests/MacPulseCoreTests/ProcessTableTests.swift \
   Tests/MacPulseCoreTests/main.swift \
   -o "$OUTPUT"
 "$OUTPUT"

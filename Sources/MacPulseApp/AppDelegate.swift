@@ -93,9 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 }
 
 extension AppDelegate: NSWindowDelegate {
-    // The dashboard window instance is kept alive when closed so its SwiftUI
-    // state (selected time range) survives reopen; reopening just re-orders it.
-    func windowWillClose(_ notification: Notification) {}
+    // The dashboard window instance is kept alive so the selected range
+    // survives reopen. Closing it must also stop detail sampling and pop
+    // back to the overview: the retained NSHostingView keeps its SwiftUI
+    // hierarchy mounted, so onDisappear/onAppear never fire for this window.
+    func windowWillClose(_ notification: Notification) {
+        store.endLiveDetail()
+        store.navigationPath = []
+    }
 }
 
 @main

@@ -48,6 +48,10 @@ public struct RawMetricsSample: Sendable, Equatable {
 public struct MetricsSnapshot: Sendable, Equatable {
     public let timestamp: Double
     public let cpuPercent: Double?
+    public let cpuUserPercent: Double?
+    public let cpuSystemPercent: Double?
+    public let cpuNicePercent: Double?
+    public let cpuIdlePercent: Double?
     public let memoryUsedBytes: UInt64?
     public let memoryTotalBytes: UInt64?
     public let memoryPercent: Double?
@@ -55,4 +59,34 @@ public struct MetricsSnapshot: Sendable, Equatable {
     public let diskWriteBytesPerSecond: Double?
     public let networkReceiveBytesPerSecond: Double?
     public let networkSendBytesPerSecond: Double?
+
+    public init(
+        timestamp: Double,
+        cpuPercent: Double?,
+        cpuUserPercent: Double? = nil,
+        cpuSystemPercent: Double? = nil,
+        cpuNicePercent: Double? = nil,
+        cpuIdlePercent: Double? = nil,
+        memoryUsedBytes: UInt64?,
+        memoryTotalBytes: UInt64?,
+        memoryPercent: Double?,
+        diskReadBytesPerSecond: Double?,
+        diskWriteBytesPerSecond: Double?,
+        networkReceiveBytesPerSecond: Double?,
+        networkSendBytesPerSecond: Double?
+    ) {
+        self.timestamp = timestamp
+        self.cpuPercent = cpuPercent
+        self.cpuUserPercent = cpuUserPercent
+        self.cpuSystemPercent = cpuSystemPercent
+        self.cpuNicePercent = cpuNicePercent
+        self.cpuIdlePercent = cpuIdlePercent
+        self.memoryUsedBytes = memoryUsedBytes
+        self.memoryTotalBytes = memoryTotalBytes
+        self.memoryPercent = memoryPercent
+        self.diskReadBytesPerSecond = diskReadBytesPerSecond
+        self.diskWriteBytesPerSecond = diskWriteBytesPerSecond
+        self.networkReceiveBytesPerSecond = networkReceiveBytesPerSecond
+        self.networkSendBytesPerSecond = networkSendBytesPerSecond
+    }
 }

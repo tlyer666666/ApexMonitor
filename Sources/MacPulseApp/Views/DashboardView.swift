@@ -2,21 +2,28 @@ import SwiftUI
 
 struct DashboardView: View {
     @ObservedObject var store: MonitorStore
-    @State private var range: HistoryRange = .fifteenMinutes
 
     private var metrics: MetricsSnapshot? { store.snapshot }
 
     var body: some View {
-        let points = store.points(for: range)
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                rangePicker
-                currentGrid
-                chartGrid(points)
-                footer
+        let points = store.points(for: store.selectedRange)
+        return NavigationStack(path: $store.navigationPath) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    rangePicker
+                    currentGrid
+                    chartGrid(points)
+                    footer
+                }
+                .padding(22)
             }
-            .padding(22)
+            .navigationDestination(for: MetricCategory.self) { category in
+                MetricDetailView(category: category, store: store) {
+                    guard !store.navigationPath.isEmpty else { return }
+                    store.navigationPath.removeLast()
+                }
+            }
         }
         .frame(minWidth: 780, minHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -48,7 +55,7 @@ struct DashboardView: View {
 
     private var rangePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("时间范围", selection: $range) {
+            Picker("时间范围", selection: $store.selectedRange) {
                 ForEach(HistoryRange.allCases, id: \.self) { range in
                     Text(range.label).tag(range)
                 }
@@ -60,34 +67,57 @@ struct DashboardView: View {
 
     private var currentGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            CurrentMetricCard(
-                title: "CPU",
-                symbol: "cpu",
-                value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
-                detail: "总使用率",
-                tint: .blue
-            )
-            CurrentMetricCard(
-                title: "内存",
-                symbol: "memorychip",
-                value: metrics.map { MetricsFormatter.percent($0.memoryPercent) } ?? "采集中",
-                detail: memoryDetail,
-                tint: .purple
-            )
-            CurrentMetricCard(
-                title: "磁盘读取",
-                symbol: "arrow.down.circle",
-                value: MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond),
-                detail: "写入 \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
-                tint: .orange
-            )
-            CurrentMetricCard(
-                title: "网络接收",
-                symbol: "arrow.down.circle",
-                value: MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond),
-                detail: "发送 \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
-                tint: .green
-            )
+            Button {
+                store.navigationPath.append(.cpu)
+            } label: {
+                CurrentMetricCard(
+                    title: "CPU",
+                    symbol: "cpu",
+                    value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
+                    detail: "总使用率",
+                    tint: .blue
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                store.navigationPath.append(.memory)
+            } label: {
+                CurrentMetricCard(
+                    title: "内存",
+                    symbol: "memorychip",
+                    value: metrics.map { MetricsFormatter.percent($0.memoryPercent) } ?? "采集中",
+                    detail: memoryDetail,
+                    tint: .purple
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                store.navigationPath.append(.disk)
+            } label: {
+                CurrentMetricCard(
+                    title: "磁盘读取",
+                    symbol: "arrow.down.circle",
+                    value: MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond),
+                    detail: "写入 \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
+                    tint: .orange
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                store.navigationPath.append(.network)
+            } label: {
+                CurrentMetricCard(
+                    title: "网络接收",
+                    symbol: "arrow.down.circle",
+                    value: MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond),
+                    detail: "发送 \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
+                    tint: .green
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -136,7 +166,7 @@ struct DashboardView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            Text("当前范围：\(range.label) · 短周期显示逐秒明细，更长周期显示分钟级均值 · 历史保留 7 天")
+                Text("当前范围：\(store.selectedRange.label) · 短周期显示逐秒明细，更长周期显示分钟级均值 · 历史保留 7 天")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
