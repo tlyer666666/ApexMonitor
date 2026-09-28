@@ -161,7 +161,8 @@ func testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead() {
 
     let values: [Double?] = (0..<12).map { Double($0) }
     let downsampled = HistoryAnalyzer.downsample(values, maxPoints: 4)
-    expect(downsampled == [0, 3, 6, 9], "long series is evenly decimated across the whole window")
+    expect(downsampled == [0, 3, 6, 11], "long series is evenly decimated but keeps the newest sample")
+    expect(downsampled.last == values.last, "decimation always pins the newest sample to the right edge")
     expect(HistoryAnalyzer.downsample(values, maxPoints: 600).count == 12, "decimation never grows a series")
     expect(HistoryAnalyzer.downsample([nil, 5, nil], maxPoints: 0) == [nil, 5, nil], "non-positive cap passes the series through")
 }

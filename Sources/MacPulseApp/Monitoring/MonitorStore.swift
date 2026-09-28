@@ -9,6 +9,9 @@ struct TimestampedSnapshot: Sendable {
 @MainActor
 final class MonitorStore: ObservableObject {
     static let recentSampleLimit = 7_200
+    /// Disk writes are debounced to every Nth minute bucket; the final state
+    /// is always saved on stop(), so a crash loses at most N-1 minutes.
+    private static let saveEveryBuckets = 5
 
     @Published private(set) var snapshot: MetricsSnapshot?
     @Published private(set) var recentSamples: [TimestampedSnapshot] = []
@@ -18,6 +21,9 @@ final class MonitorStore: ObservableObject {
     private let historyFile: HistoryFileStore
     private var aggregator = MetricsAggregator()
     private let historyQueue = DispatchQueue(label: "com.macpulse.history", qos: .utility)
+    private var historyLoaded = false
+    private var bucketsSinceSave = 0
+    private var minutePathCache: (range: HistoryRange, bucketCount: Int, minute: Date, points: [MetricPoint])?
 
     init(historyFile: HistoryFileStore = .defaultStore()) {
         self.historyFile = historyFile
@@ -31,7 +37,7 @@ final class MonitorStore: ObservableObject {
                 now: Date()
             )
             Task { @MainActor [weak self] in
-                self?.minuteBuckets = loaded
+                self?.adoptLoadedHistory(loaded)
             }
         }
         sampler.start { [weak self] snapshot in
@@ -41,16 +47,34 @@ final class MonitorStore: ObservableObject {
         }
     }
 
+    private func adoptLoadedHistory(_ loaded: [MinuteBucket]) {
+        // Merge instead of assigning in case a minute bucket was recorded
+        // while the load was still in flight.
+        minuteBuckets = HistoryAnalyzer.prunedBuckets(
+            HistoryAnalyzer.mergedBuckets(minuteBuckets + loaded),
+            now: Date()
+        )
+        historyLoaded = true
+    }
+
     func stop() {
         sampler.stop()
         if let partial = aggregator.flush(at: Date()) {
             minuteBuckets.append(partial)
-            minuteBuckets = HistoryAnalyzer.prunedBuckets(minuteBuckets, now: Date())
         }
-        // Serializing the final save through historyQueue prevents a queued
-        // boundary save from overwriting it with stale buckets afterwards.
-        historyQueue.sync {
-            _ = historyFile.save(minuteBuckets)
+        let wasLoaded = historyLoaded
+        let current = minuteBuckets
+        let now = Date()
+        historyQueue.sync { [file = historyFile] in
+            let buckets: [MinuteBucket]
+            if wasLoaded {
+                buckets = current
+            } else {
+                // Fast quit: the async load may not have landed yet, so merge
+                // from disk here instead of overwriting history with [].
+                buckets = HistoryAnalyzer.mergedBuckets(current + file.load())
+            }
+            _ = file.save(HistoryAnalyzer.prunedBuckets(buckets, now: now))
         }
     }
 
@@ -68,7 +92,16 @@ final class MonitorStore: ObservableObject {
                 return samples.map { MetricPoint(date: $0.date, snapshot: $0.snapshot) }
             }
         }
-        return HistoryAnalyzer.minuteSeries(from: minuteBuckets, within: range.seconds, now: now)
+        let minute = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
+        if let cache = minutePathCache,
+           cache.range == range,
+           cache.bucketCount == minuteBuckets.count,
+           cache.minute == minute {
+            return cache.points
+        }
+        let points = HistoryAnalyzer.minuteSeries(from: minuteBuckets, within: range.seconds, now: now)
+        minutePathCache = (range, minuteBuckets.count, minute, points)
+        return points
     }
 
     private func accept(_ snapshot: MetricsSnapshot) {
@@ -81,7 +114,11 @@ final class MonitorStore: ObservableObject {
         if let completed = aggregator.append(snapshot, at: Date()) {
             minuteBuckets.append(completed)
             minuteBuckets = HistoryAnalyzer.prunedBuckets(minuteBuckets, now: Date())
-            saveHistory()
+            bucketsSinceSave += 1
+            if bucketsSinceSave >= Self.saveEveryBuckets {
+                bucketsSinceSave = 0
+                saveHistory()
+            }
         }
     }
 

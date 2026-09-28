@@ -190,7 +190,11 @@ public enum HistoryAnalyzer {
         guard maxPoints > 0, values.count > maxPoints else { return values }
         let step = Double(values.count) / Double(maxPoints)
         return (0..<maxPoints).map { index in
-            values[Int((Double(index) * step).rounded(.down))]
+            // Pin the newest sample to the right edge of the decimated window.
+            let source = index == maxPoints - 1
+                ? values.count - 1
+                : Int((Double(index) * step).rounded(.down))
+            return values[source]
         }
     }
 

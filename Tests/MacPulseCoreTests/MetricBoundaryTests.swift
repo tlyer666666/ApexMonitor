@@ -50,6 +50,27 @@ func testNetworkCounterAccumulatorKeepsTotalsMonotonicWhenInterfaceDeparts() {
     expect(afterRejoin?.sentBytes == 500, "rejoined interface establishes a fresh baseline without double counting")
 }
 
+func testNetworkCounterAccumulatorKeepsTotalsWhenAllInterfacesDepartAndRejoin() {
+    var accumulator = NetworkCounterAccumulator()
+    _ = accumulator.update([
+        "en0": .init(receivedBytes: 1_000, sentBytes: 500),
+        "utun0": .init(receivedBytes: 2_000, sentBytes: 1_000)
+    ])
+    _ = accumulator.update([
+        "en0": .init(receivedBytes: 1_500, sentBytes: 750),
+        "utun0": .init(receivedBytes: 2_100, sentBytes: 1_050)
+    ])
+
+    let allDeparted = accumulator.update([:])
+    expect(allDeparted == nil, "no interfaces means no totals to report")
+
+    let totals = accumulator.update([
+        "en0": .init(receivedBytes: 100, sentBytes: 50)
+    ])
+    expect(totals?.receivedBytes == 600, "all-depart retirement keeps both interfaces' accumulated bytes")
+    expect(totals?.sentBytes == 300, "all-depart retirement keeps both interfaces' accumulated bytes")
+}
+
 func runMetricBoundaryTests() {
     testDecodesHighBitProcessorTicksWithoutSignedOverflow()
     testMemoryTrendGeometryHandlesEmptySinglePointAndFlatValues()

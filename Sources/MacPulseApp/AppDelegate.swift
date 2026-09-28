@@ -93,11 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 }
 
 extension AppDelegate: NSWindowDelegate {
-    func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow,
-              window === dashboardWindow else { return }
-        dashboardWindow = nil
-    }
+    // The dashboard window instance is kept alive when closed so its SwiftUI
+    // state (selected time range) survives reopen; reopening just re-orders it.
+    func windowWillClose(_ notification: Notification) {}
 }
 
 @main

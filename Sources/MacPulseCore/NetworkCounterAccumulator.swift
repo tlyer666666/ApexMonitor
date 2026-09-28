@@ -31,6 +31,14 @@ public struct NetworkCounterAccumulator {
 
     public mutating func update(_ current: [String: NetworkInterfaceCounters]) -> NetworkCounterTotals? {
         guard !current.isEmpty else {
+            // Retire remaining states so their accumulated bytes survive a
+            // temporary total interface loss.
+            for state in states.values {
+                retired = NetworkInterfaceCounters(
+                    receivedBytes: retired.receivedBytes &+ state.total.receivedBytes,
+                    sentBytes: retired.sentBytes &+ state.total.sentBytes
+                )
+            }
             states.removeAll(keepingCapacity: true)
             return nil
         }
