@@ -40,9 +40,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         button.title = "CPU —"
         button.imagePosition = .noImage
-        button.toolTip = "MacPulse 系统性能"
+        button.toolTip = "MacPulse 系统性能（左键弹层 · 右键菜单）"
         button.target = self
-        button.action = #selector(togglePopover(_:))
+        button.action = #selector(statusItemClicked(_:))
+        // Deliver right-clicks to the action so a context menu can be shown.
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked(_ sender: Any?) {
+        guard let event = NSApp.currentEvent else {
+            togglePopover(sender)
+            return
+        }
+        if event.type == .rightMouseUp {
+            showContextMenu()
+        } else {
+            togglePopover(sender)
+        }
+    }
+
+    /// Right-click menu: the tray-only escape hatch for opening the panel or
+    /// quitting. Temporarily assigning statusItem.menu is the standard trick
+    /// to anchor an NSMenu under a status item that also uses a popover.
+    private func showContextMenu() {
+        popover.performClose(nil)
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let dashboard = NSMenuItem(title: "打开主面板", action: #selector(openDashboardFromMenu), keyEquivalent: "")
+        dashboard.target = self
+        menu.addItem(dashboard)
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "退出 MacPulse", action: #selector(quitFromMenu), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func openDashboardFromMenu() {
+        openDashboard()
+    }
+
+    @objc private func quitFromMenu() {
+        NSApp.terminate(nil)
     }
 
     private func configurePopover() {
