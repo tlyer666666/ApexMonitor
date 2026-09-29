@@ -39,7 +39,7 @@ Scripts/test.sh
 Scripts/smoke.sh
 ```
 
-产物路径：`dist/MacPulse.app`。关闭主仪表盘窗口不会退出菜单栏应用；使用弹层中的“退出 MacPulse”结束程序。
+产物路径：`dist/MacPulse.app`。启动应用（或再次双击桌面快捷方式）会直接显示主面板；关闭窗口仅收起到菜单栏，可再次双击快捷方式或通过弹层“打开监控面板”重新打开；使用弹层中的“退出 MacPulse”结束程序。
 
 ## 权限、隐私与数据边界
 

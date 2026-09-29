@@ -16,9 +16,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         configurePopover()
         observeSnapshots()
         store.start()
-        if ProcessInfo.processInfo.arguments.contains("--dashboard") {
+        // Launching the app is an explicit user action: show the dashboard
+        // instead of sitting hidden in the menu bar.
+        openDashboard()
+    }
+
+    /// Double-clicking the Desktop shortcut (or `open`) on an already-running
+    /// instance must also surface the dashboard, even when the window was
+    /// closed earlier.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
             openDashboard()
         }
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
