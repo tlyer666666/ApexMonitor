@@ -126,6 +126,14 @@ public enum HistoryRange: String, CaseIterable, Sendable {
     }
 }
 
+public struct TrafficStatistics: Sendable, Equatable {
+    public let receivedBytes: Double?
+    public let sentBytes: Double?
+    public let receivePeakPerSecond: Double?
+    public let sendPeakPerSecond: Double?
+    public let coverageSeconds: Double
+}
+
 public enum HistoryAnalyzer {
     public static let retentionSeconds: TimeInterval = 7 * 86_400
 
@@ -186,8 +194,50 @@ public enum HistoryAnalyzer {
         )
     }
 
-    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {
-        guard maxPoints > 0, values.count > maxPoints else { return values }
+    /// Integrates sampled rates into traffic totals over the covered window.
+    /// Each point is treated as covering `sampleSpacing` seconds (1 s for the
+    /// per-second series, 60 s for minute buckets). Missing samples contribute
+    /// nothing, so totals never extrapolate across monitoring gaps.
+    public static func trafficStatistics(
+        _ points: [MetricPoint],
+        sampleSpacing seconds: Double
+    ) -> TrafficStatistics {
+        guard seconds.isFinite, seconds > 0 else {
+            return TrafficStatistics(receivedBytes: nil, sentBytes: nil, receivePeakPerSecond: nil, sendPeakPerSecond: nil, coverageSeconds: 0)
+        }
+        var received: Double?
+        var sent: Double?
+        var receivePeak: Double?
+        var sendPeak: Double?
+        var coverage = 0.0
+        for point in points {
+            var counted = false
+            if let rate = point.networkReceive, rate.isFinite, rate >= 0 {
+                received = (received ?? 0) + rate * seconds
+                receivePeak = max(receivePeak ?? rate, rate)
+                counted = true
+            }
+            if let rate = point.networkSend, rate.isFinite, rate >= 0 {
+                sent = (sent ?? 0) + rate * seconds
+                sendPeak = max(sendPeak ?? rate, rate)
+                counted = true
+            }
+            // Coverage matches integration: a point counts only when it
+            // carried at least one valid rate.
+            if counted {
+                coverage += seconds
+            }
+        }
+        return TrafficStatistics(
+            receivedBytes: received,
+            sentBytes: sent,
+            receivePeakPerSecond: receivePeak,
+            sendPeakPerSecond: sendPeak,
+            coverageSeconds: coverage
+        )
+    }
+
+    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {        guard maxPoints > 0, values.count > maxPoints else { return values }
         let step = Double(values.count) / Double(maxPoints)
         return (0..<maxPoints).map { index in
             // Pin the newest sample to the right edge of the decimated window.

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuPopoverView: View {
     @ObservedObject var store: MonitorStore
+    let onOpenCategory: (MetricCategory) -> Void
     let onOpenDashboard: () -> Void
     let onQuit: () -> Void
 
@@ -13,7 +14,7 @@ struct MenuPopoverView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("MacPulse")
                         .font(.system(.title3, design: .rounded).weight(.bold))
-                    Text("系统实时状态")
+                    Text("系统实时状态 · 点击分类查看详情")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -26,35 +27,66 @@ struct MenuPopoverView: View {
 
             Divider()
 
-            MetricRow(
-                title: "CPU",
-                symbol: "cpu",
-                value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
-                detail: metrics?.cpuPercent == nil ? "等待下一次有效采样" : "总使用率 · 最近 5 分钟"
-            )
+            Button {
+                onOpenCategory(.cpu)
+            } label: {
+                MetricRow(
+                    title: "CPU",
+                    symbol: "cpu",
+                    value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
+                    detail: metrics?.cpuPercent == nil ? "等待下一次有效采样" : "总使用率 · 最近 5 分钟",
+                    showsChevron: true
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             MiniSparkline(values: store.points(for: .fiveMinutes).map(\.cpu))
                 .padding(.bottom, 2)
-            MetricRow(
-                title: "内存",
-                symbol: "memorychip",
-                value: memoryValue,
-                detail: memoryDetail,
-                tint: .purple
-            )
-            MetricRow(
-                title: "磁盘",
-                symbol: "internaldrive",
-                value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
-                detail: "读取 / 写入",
-                tint: .orange
-            )
-            MetricRow(
-                title: "网络",
-                symbol: "network",
-                value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
-                detail: "接收 / 发送",
-                tint: .green
-            )
+
+            Button {
+                onOpenCategory(.memory)
+            } label: {
+                MetricRow(
+                    title: "内存",
+                    symbol: "memorychip",
+                    value: memoryValue,
+                    detail: memoryDetail,
+                    tint: .purple,
+                    showsChevron: true
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                onOpenCategory(.disk)
+            } label: {
+                MetricRow(
+                    title: "磁盘",
+                    symbol: "internaldrive",
+                    value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
+                    detail: "读取 / 写入",
+                    tint: .orange,
+                    showsChevron: true
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                onOpenCategory(.network)
+            } label: {
+                MetricRow(
+                    title: "网络",
+                    symbol: "network",
+                    value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
+                    detail: "接收 / 发送",
+                    tint: .green,
+                    showsChevron: true
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             Divider()
 

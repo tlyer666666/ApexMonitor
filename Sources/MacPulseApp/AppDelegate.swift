@@ -43,10 +43,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(
             rootView: MenuPopoverView(
                 store: store,
+                onOpenCategory: { [weak self] category in
+                    self?.openCategoryDashboard(category)
+                },
                 onOpenDashboard: { [weak self] in self?.openDashboard() },
                 onQuit: { NSApp.terminate(nil) }
             )
         )
+    }
+
+    /// Opens (or focuses) the dashboard and lands directly on the tapped
+    /// category's detail page.
+    private func openCategoryDashboard(_ category: MetricCategory) {
+        openDashboard()
+        store.navigationPath = [category]
     }
 
     private func observeSnapshots() {

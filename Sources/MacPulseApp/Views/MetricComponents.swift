@@ -6,6 +6,7 @@ struct MetricRow: View {
     let value: String
     var detail: String? = nil
     var tint: Color = .accentColor
+    var showsChevron: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -31,6 +32,11 @@ struct MetricRow: View {
                 }
             }
             Spacer(minLength: 0)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 5)
     }

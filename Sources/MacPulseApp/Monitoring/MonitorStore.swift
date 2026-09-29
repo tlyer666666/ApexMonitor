@@ -6,6 +6,12 @@ struct TimestampedSnapshot: Sendable {
     let snapshot: MetricsSnapshot
 }
 
+struct MetricSeries: Sendable {
+    let points: [MetricPoint]
+    /// Seconds of traffic each point covers (1 s detail, 60 s bucket).
+    let spacing: Double
+}
+
 @MainActor
 final class MonitorStore: ObservableObject {
     static let recentSampleLimit = 7_200
@@ -109,6 +115,12 @@ final class MonitorStore: ObservableObject {
     }
 
     func points(for range: HistoryRange) -> [MetricPoint] {
+        series(for: range).points
+    }
+
+    /// Series plus the spacing each point covers (1 s per-second detail,
+    /// 60 s minute buckets) so callers can integrate rates into totals.
+    func series(for range: HistoryRange) -> MetricSeries {
         let now = Date()
         let cutoff = now.addingTimeInterval(-range.seconds)
 
@@ -119,7 +131,10 @@ final class MonitorStore: ObservableObject {
             if samples.count >= 2,
                let oldest = samples.first,
                now.timeIntervalSince(oldest.date) >= range.seconds * 0.5 {
-                return samples.map { MetricPoint(date: $0.date, snapshot: $0.snapshot) }
+                return MetricSeries(
+                    points: samples.map { MetricPoint(date: $0.date, snapshot: $0.snapshot) },
+                    spacing: 1
+                )
             }
         }
         let minute = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
@@ -127,11 +142,11 @@ final class MonitorStore: ObservableObject {
            cache.range == range,
            cache.bucketCount == minuteBuckets.count,
            cache.minute == minute {
-            return cache.points
+            return MetricSeries(points: cache.points, spacing: 60)
         }
         let points = HistoryAnalyzer.minuteSeries(from: minuteBuckets, within: range.seconds, now: now)
         minutePathCache = (range, minuteBuckets.count, minute, points)
-        return points
+        return MetricSeries(points: points, spacing: 60)
     }
 
     private func accept(_ snapshot: MetricsSnapshot) {

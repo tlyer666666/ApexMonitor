@@ -194,7 +194,7 @@ struct DiskDetailView: View {
                                     ProgressView(value: Double(volume.usedBytes) / Double(volume.totalBytes))
                                         .tint(.orange)
                                 }
-                                Text("可用 \(MetricsFormatter.bytes(volume.availableBytes))")
+                                Text("可用 \(MetricsFormatter.bytes(volume.availableBytes as UInt64?))")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -208,6 +208,7 @@ struct DiskDetailView: View {
 
 struct NetworkDetailView: View {
     @ObservedObject var store: MonitorStore
+    @State private var trafficRange: HistoryRange = .fifteenMinutes
 
     private var snapshot: MetricsSnapshot? { store.snapshot }
 
@@ -216,6 +217,40 @@ struct NetworkDetailView: View {
                 DetailCard(title: "实时流量") {
                     MetricRow(title: "接收", symbol: "arrow.down.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkReceiveBytesPerSecond), tint: .green)
                     MetricRow(title: "发送", symbol: "arrow.up.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkSendBytesPerSecond), tint: .green)
+                }
+
+                DetailCard(title: "流量统计") {
+                    Picker("统计时段", selection: $trafficRange) {
+                        ForEach(HistoryRange.allCases, id: \.self) { range in
+                            Text(range.label).tag(range)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    let series = store.series(for: trafficRange)
+                    let stats = HistoryAnalyzer.trafficStatistics(series.points, sampleSpacing: series.spacing)
+                    MetricRow(
+                        title: "统计覆盖",
+                        symbol: "clock",
+                        value: MetricsFormatter.duration(stats.coverageSeconds),
+                        detail: "覆盖不足所选范围时仅统计已有数据，不外推",
+                        tint: .green
+                    )
+                    MetricRow(
+                        title: "接收总量",
+                        symbol: "arrow.down.circle",
+                        value: MetricsFormatter.bytes(stats.receivedBytes),
+                        detail: "峰值 \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))",
+                        tint: .green
+                    )
+                    MetricRow(
+                        title: "发送总量",
+                        symbol: "arrow.up.circle",
+                        value: MetricsFormatter.bytes(stats.sentBytes),
+                        detail: "峰值 \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))",
+                        tint: .green
+                    )
                 }
 
                 DetailCard(title: "连接状态") {

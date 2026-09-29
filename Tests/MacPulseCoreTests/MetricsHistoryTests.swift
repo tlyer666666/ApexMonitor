@@ -167,6 +167,44 @@ func testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead() {
     expect(HistoryAnalyzer.downsample([nil, 5, nil], maxPoints: 0) == [nil, 5, nil], "non-positive cap passes the series through")
 }
 
+func testTrafficStatisticsIntegrateRatesOverSampleSpacing() {
+    let points = [
+        MetricPoint(date: historyBase, cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: 100, networkSend: 50),
+        MetricPoint(date: historyBase.addingTimeInterval(60), cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: 200, networkSend: 50)
+    ]
+    let stats = HistoryAnalyzer.trafficStatistics(points, sampleSpacing: 60)
+    expectNear(stats.receivedBytes, 18_000, "receive total integrates rates across the sampled spacing")
+    expectNear(stats.sentBytes, 6_000, "send total integrates rates across the sampled spacing")
+    expectNear(stats.receivePeakPerSecond, 200, "receive peak is the maximum sampled rate")
+    expectNear(stats.sendPeakPerSecond, 50, "send peak is the maximum sampled rate")
+    expectNear(stats.coverageSeconds, 120, "coverage counts every interval that carried data")
+}
+
+func testTrafficStatisticsSkipsMissingSamplesWithoutFabricating() {
+    let points = [
+        MetricPoint(date: historyBase, cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: nil, networkSend: 500),
+        MetricPoint(date: historyBase.addingTimeInterval(60), cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: nil, networkSend: nil),
+        MetricPoint(date: historyBase.addingTimeInterval(120), cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: 100, networkSend: nil),
+        MetricPoint(date: historyBase.addingTimeInterval(180), cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: .nan, networkSend: -5)
+    ]
+    let stats = HistoryAnalyzer.trafficStatistics(points, sampleSpacing: 60)
+    expectNear(stats.receivedBytes, 6_000, "missing receive samples contribute nothing to the total")
+    expectNear(stats.sentBytes, 30_000, "missing send samples contribute nothing to the total")
+    expectNear(stats.coverageSeconds, 120, "all-nil and non-finite points are excluded from coverage")
+}
+
+func testTrafficStatisticsHandlesEmptySeriesAndInvalidSpacing() {
+    let empty = HistoryAnalyzer.trafficStatistics([], sampleSpacing: 60)
+    expect(empty.receivedBytes == nil, "empty series has no receive total")
+    expect(empty.sentBytes == nil, "empty series has no send total")
+    expect(empty.coverageSeconds == 0, "empty series covers no time")
+    let invalid = HistoryAnalyzer.trafficStatistics([
+        MetricPoint(date: historyBase, cpu: nil, memory: nil, diskRead: nil, diskWrite: nil, networkReceive: 100, networkSend: 100)
+    ], sampleSpacing: 0)
+    expect(invalid.receivedBytes == nil, "non-positive spacing never fabricates a total")
+    expect(invalid.coverageSeconds == 0, "non-positive spacing covers no time")
+}
+
 func runMetricsHistoryTests() throws {
     testAggregatorEmitsBucketWhenMinuteRolls()
     testAggregatorFlushEmitsPartialBucketWithoutLosingData()
@@ -176,4 +214,7 @@ func runMetricsHistoryTests() throws {
     testStatisticsComputeAveragePeakAndMinimum()
     try testHistoryFileStoreRoundTripsAndToleratesCorruption()
     testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead()
+    testTrafficStatisticsIntegrateRatesOverSampleSpacing()
+    testTrafficStatisticsSkipsMissingSamplesWithoutFabricating()
+    testTrafficStatisticsHandlesEmptySeriesAndInvalidSpacing()
 }

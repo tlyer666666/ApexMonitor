@@ -16,6 +16,21 @@ public enum MetricsFormatter {
         return ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .binary)
     }
 
+    public static func bytes(_ value: Double?) -> String {
+        guard let value, value.isFinite, value >= 0 else { return "—" }
+        // Clamp to 2^62 (exact in Double) so absurd counter reads can never
+        // trap the Int64 conversion; ByteCountFormatter caps far below this.
+        let bounded = min(value.rounded(), 4_611_686_018_427_387_904)
+        return ByteCountFormatter.string(fromByteCount: Int64(bounded), countStyle: .binary)
+    }
+
+    public static func duration(_ seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite, seconds >= 0 else { return "—" }
+        if seconds < 60 { return "\(Int(seconds.rounded())) 秒" }
+        if seconds < 3_600 { return "\(Int((seconds / 60).rounded())) 分钟" }
+        return String(format: "%.1f 小时", seconds / 3_600)
+    }
+
     public static func memorySummary(usedBytes: UInt64?, totalBytes: UInt64?) -> String {
         guard let usedBytes, let totalBytes else { return "物理内存" }
         return "\(bytes(usedBytes)) / \(bytes(totalBytes))"
