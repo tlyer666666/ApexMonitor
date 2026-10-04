@@ -1,247 +1,137 @@
 import Combine
 import Foundation
 
-struct TimestampedSnapshot: Sendable {
-    let date: Date
-    let snapshot: MetricsSnapshot
-}
-
-struct MetricSeries: Sendable {
-    let points: [MetricPoint]
-    /// Seconds of traffic each point covers (1 s detail, 60 s bucket).
-    let spacing: Double
-}
-
 @MainActor
 final class MonitorStore: ObservableObject {
-    static let recentSampleLimit = 7_200
-    /// Disk writes are debounced to every Nth minute bucket; the final state
-    /// is always saved on stop(), so a crash loses at most N-1 minutes.
-    private static let saveEveryBuckets = 5
-
     @Published private(set) var snapshot: MetricsSnapshot?
-    @Published private(set) var recentSamples: [TimestampedSnapshot] = []
-    @Published private(set) var minuteBuckets: [MinuteBucket] = []
     @Published private(set) var processSummary: ProcessSummary?
     @Published private(set) var volumes: [VolumeSpace] = []
     @Published private(set) var interfaces: [InterfaceDetail] = []
     @Published private(set) var interfaceRuntimeTotals: [String: NetworkInterfaceCounters] = [:]
     @Published private(set) var pathStatus: NetworkPathStatus?
     @Published private(set) var loadAverage: LoadAverage?
-    /// Navigation and range state live here (not in SwiftUI @State) so the
-    /// dashboard window can stop detail sampling on close and still restore
-    /// the selected range when reopened.
+    @Published private(set) var historyError: String?
     @Published var navigationPath: [MetricCategory] = []
     @Published var selectedRange: HistoryRange = .fifteenMinutes
+    @Published private var historyRevision: UInt64 = 0
 
     private let sampler = MetricsSampler()
-    private let historyFile: HistoryFileStore
-    private var aggregator = MetricsAggregator()
-    private let historyQueue = DispatchQueue(label: "com.macpulse.history", qos: .utility)
-    private let detailQueue = DispatchQueue(label: "com.macpulse.detail", qos: .utility)
-    private let detailEngine = DetailEngine()
-    private var detailTimer: DispatchSourceTimer?
+    private let repository: HistoryRepository
+    private var history = HistoryRecorder()
+    private let detailSampler = DetailSampler()
+    private var detailCategory: MetricCategory?
     private var pathMonitor: NetworkPathMonitor?
-    private var historyLoaded = false
+    private var isRunning = false
+    private var lifecycle: UInt64 = 0
     private var bucketsSinceSave = 0
-    private var minutePathCache: (range: HistoryRange, bucketCount: Int, minute: Date, points: [MetricPoint])?
+    private var seriesCache: (range: HistoryRange, revision: UInt64, second: Int, value: MetricSeries)?
 
     init(historyFile: HistoryFileStore = .defaultStore()) {
-        self.historyFile = historyFile
+        repository = HistoryRepository(file: historyFile)
     }
 
     func start() {
-        let file = historyFile
-        historyQueue.async { [weak self] in
-            let loaded = HistoryAnalyzer.prunedBuckets(
-                HistoryAnalyzer.mergedBuckets(file.load()),
-                now: Date()
-            )
+        guard !isRunning else { return }
+        isRunning = true
+        lifecycle &+= 1
+        let token = lifecycle
+        repository.load { [weak self] result in
             Task { @MainActor [weak self] in
-                self?.adoptLoadedHistory(loaded)
+                guard let self, self.isRunning, self.lifecycle == token else { return }
+                self.history.restore(result.buckets, now: Date())
+                self.historyError = result.error
+                self.historyRevision &+= 1
             }
         }
-        sampler.start(
-            deliver: { [weak self] snapshot in
-                Task { @MainActor [weak self] in
-                    self?.accept(snapshot)
-                }
-            },
-            onInterfaceTotals: { [weak self] totals in
-                Task { @MainActor [weak self] in
-                    self?.interfaceRuntimeTotals = totals
+        sampler.start { [weak self] snapshot, totals, date in
+            guard let self, self.isRunning, self.lifecycle == token else { return }
+            let completed = self.history.record(snapshot, at: date)
+            self.interfaceRuntimeTotals = totals
+            self.historyRevision &+= 1
+            self.snapshot = snapshot
+            if completed {
+                self.bucketsSinceSave += 1
+                if self.bucketsSinceSave >= 5 {
+                    self.bucketsSinceSave = 0
+                    self.saveHistory()
                 }
             }
-        )
+        }
         pathMonitor = NetworkPathMonitor { [weak self] status in
             Task { @MainActor [weak self] in
-                self?.pathStatus = status
+                guard let self, self.isRunning, self.lifecycle == token else { return }
+                self.pathStatus = status
             }
         }
-    }
-
-    private func adoptLoadedHistory(_ loaded: [MinuteBucket]) {
-        // Merge instead of assigning in case a minute bucket was recorded
-        // while the load was still in flight.
-        minuteBuckets = HistoryAnalyzer.prunedBuckets(
-            HistoryAnalyzer.mergedBuckets(minuteBuckets + loaded),
-            now: Date()
-        )
-        historyLoaded = true
     }
 
     func stop() {
+        endLiveDetail()
+        guard isRunning else { return }
+        isRunning = false
+        lifecycle &+= 1
         sampler.stop()
-        stopDetailTimer()
         pathMonitor?.cancel()
         pathMonitor = nil
-        if let partial = aggregator.flush(at: Date()) {
-            minuteBuckets.append(partial)
-        }
-        let wasLoaded = historyLoaded
-        let current = minuteBuckets
-        let now = Date()
-        historyQueue.sync { [file = historyFile] in
-            let buckets: [MinuteBucket]
-            if wasLoaded {
-                buckets = current
-            } else {
-                // Fast quit: the async load may not have landed yet, so merge
-                // from disk here instead of overwriting history with [].
-                buckets = HistoryAnalyzer.mergedBuckets(current + file.load())
-            }
-            _ = file.save(HistoryAnalyzer.prunedBuckets(buckets, now: now))
-        }
+        history.flush(at: Date())
+        let result = repository.saveAndWait(session: history.sessionBuckets, now: Date())
+        historyError = result.error
     }
 
     func points(for range: HistoryRange) -> [MetricPoint] {
         series(for: range).points
     }
 
-    /// Series plus the spacing each point covers (1 s per-second detail,
-    /// 60 s minute buckets) so callers can integrate rates into totals.
     func series(for range: HistoryRange) -> MetricSeries {
         let now = Date()
-        let cutoff = now.addingTimeInterval(-range.seconds)
-
-        if range.seconds <= 3_600 {
-            // Grace period: require the per-second buffer to cover at least
-            // half the range before preferring it over minute buckets.
-            let samples = recentSamples.filter { $0.date > cutoff }
-            if samples.count >= 2,
-               let oldest = samples.first,
-               now.timeIntervalSince(oldest.date) >= range.seconds * 0.5 {
-                return MetricSeries(
-                    points: samples.map { MetricPoint(date: $0.date, snapshot: $0.snapshot) },
-                    spacing: 1
-                )
-            }
+        let second = Int(now.timeIntervalSince1970)
+        if let cache = seriesCache, cache.range == range,
+           cache.revision == historyRevision, cache.second == second {
+            return cache.value
         }
-        let minute = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
-        if let cache = minutePathCache,
-           cache.range == range,
-           cache.bucketCount == minuteBuckets.count,
-           cache.minute == minute {
-            return MetricSeries(points: cache.points, spacing: 60)
-        }
-        let points = HistoryAnalyzer.minuteSeries(from: minuteBuckets, within: range.seconds, now: now)
-        minutePathCache = (range, minuteBuckets.count, minute, points)
-        return MetricSeries(points: points, spacing: 60)
-    }
-
-    private func accept(_ snapshot: MetricsSnapshot) {
-        self.snapshot = snapshot
-        recentSamples.append(TimestampedSnapshot(date: Date(), snapshot: snapshot))
-        if recentSamples.count > Self.recentSampleLimit {
-            recentSamples.removeFirst(recentSamples.count - Self.recentSampleLimit)
-        }
-
-        if let completed = aggregator.append(snapshot, at: Date()) {
-            minuteBuckets.append(completed)
-            minuteBuckets = HistoryAnalyzer.prunedBuckets(minuteBuckets, now: Date())
-            bucketsSinceSave += 1
-            if bucketsSinceSave >= Self.saveEveryBuckets {
-                bucketsSinceSave = 0
-                saveHistory()
-            }
-        }
+        let result = history.series(for: range, now: now)
+        seriesCache = (range, historyRevision, second, result)
+        return result
     }
 
     private func saveHistory() {
-        let buckets = minuteBuckets
-        let file = historyFile
-        historyQueue.async {
-            file.save(buckets)
-        }
-    }
-
-    // MARK: - Live detail sampling
-
-    /// Category-dependent detail sampling. Runs only while a detail page is
-    /// open, at ~0.5 Hz, on a utility queue; process/volume/interface reads
-    /// never touch the main thread. The process table is re-baselined on each
-    /// begin so the first tick reflects the current moment, not the closed gap.
-    func beginLiveDetail(_ category: MetricCategory) {
-        detailQueue.async { [detailEngine] in
-            detailEngine.activeCategory = category
-            detailEngine.processTable = ProcessTable()
-        }
-        startDetailTimerIfNeeded()
-    }
-
-    func endLiveDetail() {
-        detailQueue.async { [detailEngine] in
-            detailEngine.activeCategory = nil
-        }
-        stopDetailTimer()
-    }
-
-    private func startDetailTimerIfNeeded() {
-        guard detailTimer == nil else { return }
-        let timer = DispatchSource.makeTimerSource(queue: detailQueue)
-        timer.schedule(deadline: .now(), repeating: .seconds(2), leeway: .milliseconds(300))
-        timer.setEventHandler { [weak self, detailEngine] in
-            guard let self else { return }
-            guard let category = detailEngine.activeCategory else { return }
-            let now = Date().timeIntervalSince1970
-            var summary: ProcessSummary?
-            var load: LoadAverage?
-            var volumes: [VolumeSpace] = []
-            var interfaces: [InterfaceDetail] = []
-
-            switch category {
-            case .cpu, .memory:
-                summary = detailEngine.processTable.update(detailEngine.processSampler.read(), at: now)
-                load = SystemDetailReader.loadAverage()
-            case .disk:
-                volumes = VolumeSpaceReader.read()
-            case .network:
-                interfaces = detailEngine.systemReader.readInterfaceDetails()
-            }
-
+        let token = lifecycle
+        repository.save(session: history.sessionBuckets, now: Date()) { [weak self] result in
             Task { @MainActor [weak self] in
-                self?.processSummary = summary
-                self?.loadAverage = load
-                self?.volumes = volumes
-                self?.interfaces = interfaces
+                guard let self, self.isRunning, self.lifecycle == token else { return }
+                self.historyError = result.error
             }
         }
-        detailTimer = timer
-        timer.resume()
     }
 
-    private func stopDetailTimer() {
-        detailTimer?.setEventHandler {}
-        detailTimer?.cancel()
-        detailTimer = nil
+    func beginLiveDetail(_ category: MetricCategory) {
+        detailCategory = category
+        clearDetails()
+        detailSampler.start(category) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case let .processes(summary, load):
+                self.processSummary = summary
+                self.loadAverage = load
+            case let .volumes(volumes):
+                self.volumes = volumes
+            case let .interfaces(interfaces):
+                self.interfaces = interfaces
+            }
+        }
     }
-}
 
-/// State confined to the detail queue; touches the process table and the
-/// reader only from that serial queue.
-private final class DetailEngine: @unchecked Sendable {
-    var activeCategory: MetricCategory?
-    let processSampler = ProcessSampler()
-    let systemReader = SystemMetricsReader()
-    var processTable = ProcessTable()
+    func endLiveDetail(_ category: MetricCategory? = nil) {
+        if let category, category != detailCategory { return }
+        detailSampler.stop()
+        detailCategory = nil
+        clearDetails()
+    }
+
+    private func clearDetails() {
+        processSummary = nil
+        loadAverage = nil
+        volumes = []
+        interfaces = []
+    }
 }

@@ -1,5 +1,158 @@
 import Foundation
 
+/// Sufficient statistics for one metric. Counts weight chart means; durations
+/// and byte integrals are independent of those counts and of timer cadence.
+public struct MetricAggregateMetadata: Codable, Sendable, Equatable {
+    public fileprivate(set) var validCount: Int = 0
+    public fileprivate(set) var valueSum: Double = 0
+    public fileprivate(set) var validDurationSeconds: Double = 0
+    public fileprivate(set) var totalBytes: Double?
+    public fileprivate(set) var samplePeak: Double?
+
+    public init() {}
+
+    fileprivate var average: Double? {
+        validCount > 0 ? valueSum / Double(validCount) : nil
+    }
+
+    fileprivate mutating func append(_ value: Double?, duration: Double, isRate: Bool = false) {
+        guard let value, value.isFinite else { return }
+        if isRate && (value < 0 || duration <= 0 || !(value * duration).isFinite) { return }
+        validCount += 1
+        valueSum += value
+        validDurationSeconds += duration
+        samplePeak = maximum(samplePeak, value)
+        if isRate { totalBytes = (totalBytes ?? 0) + value * duration }
+    }
+
+    fileprivate func merged(with other: Self) -> Self {
+        var result = self
+        result.validCount += other.validCount
+        result.valueSum += other.valueSum
+        result.validDurationSeconds += other.validDurationSeconds
+        result.totalBytes = added(totalBytes, other.totalBytes)
+        result.samplePeak = maximum(samplePeak, other.samplePeak)
+        return result
+    }
+
+    fileprivate func scaled(by fraction: Double) -> Self {
+        var result = self
+        result.validDurationSeconds *= fraction
+        result.totalBytes = totalBytes.map { $0 * fraction }
+        return result
+    }
+
+    /// Legacy averages have no recoverable per-metric denominator. Retain the
+    /// old count-weighted display approximation, but never infer traffic bytes.
+    fileprivate static func legacy(average: Double?, peak: Double?, count: Int) -> Self {
+        var result = Self()
+        if let average, average.isFinite {
+            result.validCount = max(0, count)
+            result.valueSum = average * Double(result.validCount)
+        }
+        result.samplePeak = peak.flatMap { $0.isFinite ? $0 : nil }
+        return result
+    }
+}
+
+/// Optional on persisted buckets: absence means legacy, NOT sixty seconds of
+/// traffic. Coverage is the union of receive/send-valid sample durations.
+public struct HistoryMetadata: Codable, Sendable, Equatable {
+    public fileprivate(set) var cpu = MetricAggregateMetadata()
+    public fileprivate(set) var memory = MetricAggregateMetadata()
+    public fileprivate(set) var diskRead = MetricAggregateMetadata()
+    public fileprivate(set) var diskWrite = MetricAggregateMetadata()
+    public fileprivate(set) var networkReceive = MetricAggregateMetadata()
+    public fileprivate(set) var networkSend = MetricAggregateMetadata()
+    public fileprivate(set) var trafficCoverageSeconds: Double = 0
+    public fileprivate(set) var hasLegacyGaps = false
+    public fileprivate(set) var isEstimated = false
+    /// Unix seconds, encoded as numbers so ISO8601 persistence cannot round
+    /// fractional sample boundaries down to whole seconds.
+    public fileprivate(set) var startTimestamp: Double?
+    public fileprivate(set) var endTimestamp: Double?
+
+    public init() {}
+
+    fileprivate init(snapshot: MetricsSnapshot, at date: Date) {
+        self.init()
+        let supplied = snapshot.sampleDurationSeconds ?? 1
+        let duration = supplied.isFinite && supplied > 0 ? supplied : 0
+        cpu.append(snapshot.cpuPercent, duration: duration)
+        memory.append(snapshot.memoryPercent, duration: duration)
+        diskRead.append(snapshot.diskReadBytesPerSecond, duration: duration, isRate: true)
+        diskWrite.append(snapshot.diskWriteBytesPerSecond, duration: duration, isRate: true)
+        networkReceive.append(snapshot.networkReceiveBytesPerSecond, duration: duration, isRate: true)
+        networkSend.append(snapshot.networkSendBytesPerSecond, duration: duration, isRate: true)
+        if networkReceive.validCount > 0 || networkSend.validCount > 0 {
+            trafficCoverageSeconds = duration
+        }
+        // Rates describe the interval ending at the sample, not the following
+        // interval. Bounds let complete windows remain exact after persistence.
+        startTimestamp = date.timeIntervalSince1970 - duration
+        endTimestamp = date.timeIntervalSince1970
+    }
+
+    fileprivate init(legacy bucket: MinuteBucket) {
+        self.init()
+        cpu = .legacy(average: bucket.cpuAverage, peak: bucket.cpuPeak, count: bucket.sampleCount)
+        memory = .legacy(average: bucket.memoryAverage, peak: bucket.memoryPeak, count: bucket.sampleCount)
+        diskRead = .legacy(average: bucket.diskReadAverage, peak: bucket.diskReadPeak, count: bucket.sampleCount)
+        diskWrite = .legacy(average: bucket.diskWriteAverage, peak: bucket.diskWritePeak, count: bucket.sampleCount)
+        networkReceive = .legacy(average: bucket.networkReceiveAverage, peak: bucket.networkReceivePeak, count: bucket.sampleCount)
+        networkSend = .legacy(average: bucket.networkSendAverage, peak: bucket.networkSendPeak, count: bucket.sampleCount)
+        hasLegacyGaps = true
+        isEstimated = true
+        startTimestamp = bucket.minuteStart.timeIntervalSince1970
+        endTimestamp = bucket.minuteStart.timeIntervalSince1970 + 60
+    }
+
+    fileprivate func merged(with other: Self) -> Self {
+        var result = self
+        result.cpu = cpu.merged(with: other.cpu)
+        result.memory = memory.merged(with: other.memory)
+        result.diskRead = diskRead.merged(with: other.diskRead)
+        result.diskWrite = diskWrite.merged(with: other.diskWrite)
+        result.networkReceive = networkReceive.merged(with: other.networkReceive)
+        result.networkSend = networkSend.merged(with: other.networkSend)
+        result.trafficCoverageSeconds += other.trafficCoverageSeconds
+        result.hasLegacyGaps = hasLegacyGaps || other.hasLegacyGaps
+        result.isEstimated = isEstimated || other.isEstimated
+        result.startTimestamp = minimum(startTimestamp, other.startTimestamp)
+        result.endTimestamp = maximum(endTimestamp, other.endTimestamp)
+        return result
+    }
+
+    /// Individual samples are not persisted. A boundary through their span can
+    /// only prorate integrals; unchanged peaks may lie outside the clipped span.
+    /// Callers must expose isEstimated for both totals and peak statistics.
+    fileprivate func scaled(by fraction: Double) -> Self {
+        guard fraction < 1 else { return self }
+        var result = self
+        result.cpu = cpu.scaled(by: fraction)
+        result.memory = memory.scaled(by: fraction)
+        result.diskRead = diskRead.scaled(by: fraction)
+        result.diskWrite = diskWrite.scaled(by: fraction)
+        result.networkReceive = networkReceive.scaled(by: fraction)
+        result.networkSend = networkSend.scaled(by: fraction)
+        result.trafficCoverageSeconds *= fraction
+        result.isEstimated = true
+        return result
+    }
+
+    fileprivate func metric(for keyPath: KeyPath<MetricPoint, Double?>) -> MetricAggregateMetadata? {
+        switch keyPath {
+        case \MetricPoint.cpu: return cpu
+        case \MetricPoint.memory: return memory
+        case \MetricPoint.diskRead: return diskRead
+        case \MetricPoint.diskWrite: return diskWrite
+        case \MetricPoint.networkReceive: return networkReceive
+        case \MetricPoint.networkSend: return networkSend
+        default: return nil
+        }
+    }
+}
+
 public struct MinuteBucket: Codable, Sendable, Equatable {
     public let minuteStart: Date
     public let sampleCount: Int
@@ -15,8 +168,9 @@ public struct MinuteBucket: Codable, Sendable, Equatable {
     public let networkReceivePeak: Double?
     public let networkSendAverage: Double?
     public let networkSendPeak: Double?
+    public let metadata: HistoryMetadata?
 
-    init(
+    public init(
         minuteStart: Date,
         sampleCount: Int,
         cpuAverage: Double?,
@@ -30,7 +184,8 @@ public struct MinuteBucket: Codable, Sendable, Equatable {
         networkReceiveAverage: Double?,
         networkReceivePeak: Double?,
         networkSendAverage: Double?,
-        networkSendPeak: Double?
+        networkSendPeak: Double?,
+        metadata: HistoryMetadata? = nil
     ) {
         self.minuteStart = minuteStart
         self.sampleCount = sampleCount
@@ -46,6 +201,22 @@ public struct MinuteBucket: Codable, Sendable, Equatable {
         self.networkReceivePeak = networkReceivePeak
         self.networkSendAverage = networkSendAverage
         self.networkSendPeak = networkSendPeak
+        self.metadata = metadata
+    }
+
+    fileprivate var resolvedMetadata: HistoryMetadata { metadata ?? HistoryMetadata(legacy: self) }
+
+    fileprivate init(minuteStart: Date, sampleCount: Int, metadata: HistoryMetadata) {
+        self.init(
+            minuteStart: minuteStart, sampleCount: sampleCount,
+            cpuAverage: metadata.cpu.average, cpuPeak: metadata.cpu.samplePeak,
+            memoryAverage: metadata.memory.average, memoryPeak: metadata.memory.samplePeak,
+            diskReadAverage: metadata.diskRead.average, diskReadPeak: metadata.diskRead.samplePeak,
+            diskWriteAverage: metadata.diskWrite.average, diskWritePeak: metadata.diskWrite.samplePeak,
+            networkReceiveAverage: metadata.networkReceive.average, networkReceivePeak: metadata.networkReceive.samplePeak,
+            networkSendAverage: metadata.networkSend.average, networkSendPeak: metadata.networkSend.samplePeak,
+            metadata: metadata
+        )
     }
 }
 
@@ -57,6 +228,7 @@ public struct MetricPoint: Sendable, Equatable {
     public let diskWrite: Double?
     public let networkReceive: Double?
     public let networkSend: Double?
+    public let metadata: HistoryMetadata?
 
     public init(
         date: Date,
@@ -65,7 +237,8 @@ public struct MetricPoint: Sendable, Equatable {
         diskRead: Double?,
         diskWrite: Double?,
         networkReceive: Double?,
-        networkSend: Double?
+        networkSend: Double?,
+        metadata: HistoryMetadata? = nil
     ) {
         self.date = date
         self.cpu = cpu
@@ -74,6 +247,7 @@ public struct MetricPoint: Sendable, Equatable {
         self.diskWrite = diskWrite
         self.networkReceive = networkReceive
         self.networkSend = networkSend
+        self.metadata = metadata
     }
 
     public init(date: Date, snapshot: MetricsSnapshot) {
@@ -84,7 +258,8 @@ public struct MetricPoint: Sendable, Equatable {
             diskRead: snapshot.diskReadBytesPerSecond,
             diskWrite: snapshot.diskWriteBytesPerSecond,
             networkReceive: snapshot.networkReceiveBytesPerSecond,
-            networkSend: snapshot.networkSendBytesPerSecond
+            networkSend: snapshot.networkSendBytesPerSecond,
+            metadata: HistoryMetadata(snapshot: snapshot, at: date)
         )
     }
 }
@@ -93,6 +268,7 @@ public struct MetricStats: Sendable, Equatable {
     public let average: Double?
     public let peak: Double?
     public let minimum: Double?
+    public var isEstimated: Bool = false
 }
 
 public enum HistoryRange: String, CaseIterable, Sendable {
@@ -127,16 +303,21 @@ public enum HistoryRange: String, CaseIterable, Sendable {
 }
 
 public struct TrafficStatistics: Sendable, Equatable {
+    /// Known contributions only when hasLegacyGaps is true; an entirely legacy
+    /// series returns nil totals and zero known coverage, never mean * 60.
     public let receivedBytes: Double?
     public let sentBytes: Double?
     public let receivePeakPerSecond: Double?
     public let sendPeakPerSecond: Double?
     public let coverageSeconds: Double
+    public var isEstimated: Bool = false
+    public var hasLegacyGaps: Bool = false
 }
 
 public enum HistoryAnalyzer {
     public static let retentionSeconds: TimeInterval = 7 * 86_400
 
+    /// Combines non-overlapping fragments, not repeated copies of one fragment.
     public static func mergedBuckets(_ buckets: [MinuteBucket]) -> [MinuteBucket] {
         var merged: [Date: MinuteBucket] = [:]
         for bucket in buckets {
@@ -144,9 +325,20 @@ public enum HistoryAnalyzer {
                 merged[bucket.minuteStart] = bucket
                 continue
             }
-            merged[bucket.minuteStart] = merge(existing, bucket)
+            merged[bucket.minuteStart] = MinuteBucket(
+                minuteStart: bucket.minuteStart,
+                sampleCount: existing.sampleCount + bucket.sampleCount,
+                metadata: existing.resolvedMetadata.merged(with: bucket.resolvedMetadata)
+            )
         }
         return merged.values.sorted { $0.minuteStart < $1.minuteStart }
+    }
+
+    /// Retention for storage must not delete observations just because a wall
+    /// clock adjustment temporarily places their timestamp in the future.
+    public static func retainedBuckets(_ buckets: [MinuteBucket], now: Date) -> [MinuteBucket] {
+        let cutoff = now.addingTimeInterval(-retentionSeconds)
+        return buckets.filter { $0.minuteStart > cutoff }
     }
 
     public static func prunedBuckets(
@@ -155,7 +347,7 @@ public enum HistoryAnalyzer {
         retentionSeconds: TimeInterval = HistoryAnalyzer.retentionSeconds
     ) -> [MinuteBucket] {
         let cutoff = now.addingTimeInterval(-retentionSeconds)
-        return buckets.filter { $0.minuteStart > cutoff }
+        return buckets.filter { $0.minuteStart > cutoff && $0.minuteStart <= now }
     }
 
     public static func minuteSeries(
@@ -163,164 +355,135 @@ public enum HistoryAnalyzer {
         within seconds: TimeInterval,
         now: Date
     ) -> [MetricPoint] {
-        let cutoff = now.addingTimeInterval(-seconds)
-        return buckets
-            .filter { $0.minuteStart > cutoff && $0.minuteStart <= now }
-            .sorted { $0.minuteStart < $1.minuteStart }
-            .map { bucket in
-                MetricPoint(
-                    date: bucket.minuteStart,
-                    cpu: bucket.cpuAverage,
-                    memory: bucket.memoryAverage,
-                    diskRead: bucket.diskReadAverage,
-                    diskWrite: bucket.diskWriteAverage,
-                    networkReceive: bucket.networkReceiveAverage,
-                    networkSend: bucket.networkSendAverage
-                )
+        guard seconds.isFinite, seconds > 0 else { return [] }
+        let end = now.timeIntervalSince1970
+        let cutoff = end - seconds
+        return buckets.sorted { $0.minuteStart < $1.minuteStart }.compactMap { bucket in
+            guard bucket.minuteStart <= now else { return nil }
+            let metadata = bucket.resolvedMetadata
+            let start = metadata.startTimestamp ?? bucket.minuteStart.timeIntervalSince1970
+            let finish = metadata.endTimestamp ?? bucket.minuteStart.timeIntervalSince1970 + 60
+            let fraction: Double
+            if finish > start {
+                let overlap = min(finish, end) - max(start, cutoff)
+                guard overlap > 0 else { return nil }
+                fraction = min(1, overlap / (finish - start))
+            } else {
+                guard finish > cutoff, finish <= end else { return nil }
+                fraction = 1
             }
+            return MetricPoint(
+                date: bucket.minuteStart,
+                cpu: bucket.cpuAverage,
+                memory: bucket.memoryAverage,
+                diskRead: bucket.diskReadAverage,
+                diskWrite: bucket.diskWriteAverage,
+                networkReceive: bucket.networkReceiveAverage,
+                networkSend: bucket.networkSendAverage,
+                metadata: metadata.scaled(by: fraction)
+            )
+        }
     }
 
     public static func statistics(
         _ points: [MetricPoint],
         metric keyPath: KeyPath<MetricPoint, Double?>
     ) -> MetricStats {
-        let values = points.compactMap { $0[keyPath: keyPath] }
-        guard !values.isEmpty else { return MetricStats(average: nil, peak: nil, minimum: nil) }
-        let total = values.reduce(0, +)
+        let values = points.compactMap { $0[keyPath: keyPath] }.filter(\.isFinite)
+        let peaks = points.compactMap { point in
+            point.metadata?.metric(for: keyPath)?.samplePeak ?? point[keyPath: keyPath]
+        }.filter(\.isFinite)
+        var sum = 0.0
+        var count = 0.0
+        for point in points {
+            if let metric = point.metadata?.metric(for: keyPath) {
+                guard metric.validCount > 0, metric.valueSum.isFinite else { continue }
+                sum += metric.valueSum
+                count += Double(metric.validCount)
+            } else if let value = point[keyPath: keyPath], value.isFinite {
+                sum += value
+                count += 1
+            }
+        }
         return MetricStats(
-            average: total / Double(values.count),
-            peak: values.max(),
-            minimum: values.min()
+            average: count > 0 && sum.isFinite ? sum / count : nil,
+            peak: peaks.max(),
+            minimum: values.min(),
+            isEstimated: points.contains { $0.metadata?.isEstimated == true }
         )
     }
 
-    /// Integrates sampled rates into traffic totals over the covered window.
-    /// Each point is treated as covering `sampleSpacing` seconds (1 s for the
-    /// per-second series, 60 s for minute buckets). Missing samples contribute
-    /// nothing, so totals never extrapolate across monitoring gaps.
+    /// Metadata is authoritative, regardless of sampleSpacing. The spacing
+    /// fallback is only for explicitly constructed raw points without metadata;
+    /// that integration is marked estimated. minuteSeries always adds metadata,
+    /// including an explicit unknown-coverage marker for legacy buckets.
     public static func trafficStatistics(
         _ points: [MetricPoint],
         sampleSpacing seconds: Double
     ) -> TrafficStatistics {
-        guard seconds.isFinite, seconds > 0 else {
-            return TrafficStatistics(receivedBytes: nil, sentBytes: nil, receivePeakPerSecond: nil, sendPeakPerSecond: nil, coverageSeconds: 0)
-        }
         var received: Double?
         var sent: Double?
         var receivePeak: Double?
         var sendPeak: Double?
         var coverage = 0.0
+        var estimated = false
+        var legacy = false
         for point in points {
-            var counted = false
-            if let rate = point.networkReceive, rate.isFinite, rate >= 0 {
-                received = (received ?? 0) + rate * seconds
-                receivePeak = max(receivePeak ?? rate, rate)
-                counted = true
-            }
-            if let rate = point.networkSend, rate.isFinite, rate >= 0 {
-                sent = (sent ?? 0) + rate * seconds
-                sendPeak = max(sendPeak ?? rate, rate)
-                counted = true
-            }
-            // Coverage matches integration: a point counts only when it
-            // carried at least one valid rate.
-            if counted {
-                coverage += seconds
+            if let metadata = point.metadata {
+                received = added(received, metadata.networkReceive.totalBytes)
+                sent = added(sent, metadata.networkSend.totalBytes)
+                receivePeak = maximum(receivePeak, metadata.networkReceive.samplePeak)
+                sendPeak = maximum(sendPeak, metadata.networkSend.samplePeak)
+                coverage += metadata.trafficCoverageSeconds
+                estimated = estimated || metadata.isEstimated
+                legacy = legacy || metadata.hasLegacyGaps
+            } else if seconds.isFinite, seconds > 0 {
+                var counted = false
+                if let rate = point.networkReceive, rate.isFinite, rate >= 0, (rate * seconds).isFinite {
+                    received = (received ?? 0) + rate * seconds
+                    receivePeak = maximum(receivePeak, rate)
+                    counted = true
+                }
+                if let rate = point.networkSend, rate.isFinite, rate >= 0, (rate * seconds).isFinite {
+                    sent = (sent ?? 0) + rate * seconds
+                    sendPeak = maximum(sendPeak, rate)
+                    counted = true
+                }
+                if counted { coverage += seconds; estimated = true }
             }
         }
         return TrafficStatistics(
-            receivedBytes: received,
-            sentBytes: sent,
-            receivePeakPerSecond: receivePeak,
-            sendPeakPerSecond: sendPeak,
-            coverageSeconds: coverage
+            receivedBytes: received, sentBytes: sent,
+            receivePeakPerSecond: receivePeak, sendPeakPerSecond: sendPeak,
+            coverageSeconds: coverage, isEstimated: estimated, hasLegacyGaps: legacy
         )
     }
 
-    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {        guard maxPoints > 0, values.count > maxPoints else { return values }
+    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {
+        guard maxPoints > 0, values.count > maxPoints else { return values }
         let step = Double(values.count) / Double(maxPoints)
         return (0..<maxPoints).map { index in
-            // Pin the newest sample to the right edge of the decimated window.
+            // With a single slot prefer the newest; with >= 2 keep both ends.
             let source = index == maxPoints - 1
                 ? values.count - 1
                 : Int((Double(index) * step).rounded(.down))
             return values[source]
         }
     }
-
-    private static func merge(_ older: MinuteBucket, _ newer: MinuteBucket) -> MinuteBucket {
-        MinuteBucket(
-            minuteStart: older.minuteStart,
-            sampleCount: older.sampleCount + newer.sampleCount,
-            cpuAverage: weightedAverage(older.cpuAverage, older.sampleCount, newer.cpuAverage, newer.sampleCount),
-            cpuPeak: peak(older.cpuPeak, newer.cpuPeak),
-            memoryAverage: weightedAverage(older.memoryAverage, older.sampleCount, newer.memoryAverage, newer.sampleCount),
-            memoryPeak: peak(older.memoryPeak, newer.memoryPeak),
-            diskReadAverage: weightedAverage(older.diskReadAverage, older.sampleCount, newer.diskReadAverage, newer.sampleCount),
-            diskReadPeak: peak(older.diskReadPeak, newer.diskReadPeak),
-            diskWriteAverage: weightedAverage(older.diskWriteAverage, older.sampleCount, newer.diskWriteAverage, newer.sampleCount),
-            diskWritePeak: peak(older.diskWritePeak, newer.diskWritePeak),
-            networkReceiveAverage: weightedAverage(older.networkReceiveAverage, older.sampleCount, newer.networkReceiveAverage, newer.sampleCount),
-            networkReceivePeak: peak(older.networkReceivePeak, newer.networkReceivePeak),
-            networkSendAverage: weightedAverage(older.networkSendAverage, older.sampleCount, newer.networkSendAverage, newer.sampleCount),
-            networkSendPeak: peak(older.networkSendPeak, newer.networkSendPeak)
-        )
-    }
-
-    private static func weightedAverage(_ first: Double?, _ firstCount: Int, _ second: Double?, _ secondCount: Int) -> Double? {
-        switch (first, second) {
-        case let (lhs?, rhs?):
-            let total = firstCount + secondCount
-            guard total > 0 else { return nil }
-            return (lhs * Double(firstCount) + rhs * Double(secondCount)) / Double(total)
-        case let (lhs?, nil): return lhs
-        case let (nil, rhs?): return rhs
-        case (nil, nil): return nil
-        }
-    }
-
-    private static func peak(_ first: Double?, _ second: Double?) -> Double? {
-        switch (first, second) {
-        case let (lhs?, rhs?): return max(lhs, rhs)
-        case let (lhs?, nil): return lhs
-        case let (nil, rhs?): return rhs
-        case (nil, nil): return nil
-        }
-    }
-}
-
-struct MetricAccumulator {
-    private var sum = 0.0
-    private var peakValue = -Double.infinity
-    private var count = 0
-
-    mutating func append(_ value: Double?) {
-        guard let value, value.isFinite else { return }
-        sum += value
-        peakValue = max(peakValue, value)
-        count += 1
-    }
-
-    var average: Double? {
-        count > 0 ? sum / Double(count) : nil
-    }
-
-    var peak: Double? {
-        count > 0 ? peakValue : nil
-    }
 }
 
 public struct MetricsAggregator {
     private var minuteStart: Date?
     private var sampleCount = 0
-    private var cpu = MetricAccumulator()
-    private var memory = MetricAccumulator()
-    private var diskRead = MetricAccumulator()
-    private var diskWrite = MetricAccumulator()
-    private var networkReceive = MetricAccumulator()
-    private var networkSend = MetricAccumulator()
+    private var metadata = HistoryMetadata()
 
     public init() {}
+
+    /// A non-consuming snapshot of the pending minute, safe for live queries.
+    public var currentBucket: MinuteBucket? {
+        guard let minuteStart, sampleCount > 0 else { return nil }
+        return makeBucket(for: minuteStart)
+    }
 
     public mutating func append(_ snapshot: MetricsSnapshot, at date: Date) -> MinuteBucket? {
         let minute = Self.minuteStart(of: date)
@@ -329,16 +492,9 @@ public struct MetricsAggregator {
             completed = makeBucket(for: current)
             reset()
         }
-        if minuteStart == nil {
-            minuteStart = minute
-        }
+        if minuteStart == nil { minuteStart = minute }
         sampleCount += 1
-        cpu.append(snapshot.cpuPercent)
-        memory.append(snapshot.memoryPercent)
-        diskRead.append(snapshot.diskReadBytesPerSecond)
-        diskWrite.append(snapshot.diskWriteBytesPerSecond)
-        networkReceive.append(snapshot.networkReceiveBytesPerSecond)
-        networkSend.append(snapshot.networkSendBytesPerSecond)
+        metadata = metadata.merged(with: HistoryMetadata(snapshot: snapshot, at: date))
         return completed
     }
 
@@ -350,38 +506,38 @@ public struct MetricsAggregator {
     }
 
     private func makeBucket(for minute: Date) -> MinuteBucket {
-        MinuteBucket(
-            minuteStart: minute,
-            sampleCount: sampleCount,
-            cpuAverage: cpu.average,
-            cpuPeak: cpu.peak,
-            memoryAverage: memory.average,
-            memoryPeak: memory.peak,
-            diskReadAverage: diskRead.average,
-            diskReadPeak: diskRead.peak,
-            diskWriteAverage: diskWrite.average,
-            diskWritePeak: diskWrite.peak,
-            networkReceiveAverage: networkReceive.average,
-            networkReceivePeak: networkReceive.peak,
-            networkSendAverage: networkSend.average,
-            networkSendPeak: networkSend.peak
-        )
+        MinuteBucket(minuteStart: minute, sampleCount: sampleCount, metadata: metadata)
     }
 
     private mutating func reset() {
         minuteStart = nil
         sampleCount = 0
-        cpu = MetricAccumulator()
-        memory = MetricAccumulator()
-        diskRead = MetricAccumulator()
-        diskWrite = MetricAccumulator()
-        networkReceive = MetricAccumulator()
-        networkSend = MetricAccumulator()
+        metadata = HistoryMetadata()
     }
 
     private static func minuteStart(of date: Date) -> Date {
         let seconds = date.timeIntervalSince1970
-        let aligned = (seconds / 60).rounded(.down) * 60
-        return Date(timeIntervalSince1970: aligned)
+        return Date(timeIntervalSince1970: (seconds / 60).rounded(.down) * 60)
+    }
+}
+
+private func added(_ first: Double?, _ second: Double?) -> Double? {
+    guard first != nil || second != nil else { return nil }
+    return (first ?? 0) + (second ?? 0)
+}
+
+private func maximum(_ first: Double?, _ second: Double?) -> Double? {
+    switch (first, second) {
+    case let (lhs?, rhs?): return max(lhs, rhs)
+    case let (value?, nil), let (nil, value?): return value
+    case (nil, nil): return nil
+    }
+}
+
+private func minimum(_ first: Double?, _ second: Double?) -> Double? {
+    switch (first, second) {
+    case let (lhs?, rhs?): return min(lhs, rhs)
+    case let (value?, nil), let (nil, value?): return value
+    case (nil, nil): return nil
     }
 }

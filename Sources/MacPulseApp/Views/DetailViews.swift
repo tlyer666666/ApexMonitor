@@ -30,7 +30,7 @@ struct MetricDetailView: View {
         }
         .navigationTitle(category.title)
         .onAppear { store.beginLiveDetail(category) }
-        .onDisappear { store.endLiveDetail() }
+        .onDisappear { store.endLiveDetail(category) }
     }
 }
 
@@ -130,7 +130,7 @@ struct MemoryDetailView: View {
                         ForEach(Array(summary.topByMemory.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
-                        Text("共 \(summary.processCount) 个进程")
+                        Text("当前权限可读 \(summary.processCount) 个进程")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     } else {
@@ -229,12 +229,20 @@ struct NetworkDetailView: View {
                     .labelsHidden()
 
                     let series = store.series(for: trafficRange)
-                    let stats = HistoryAnalyzer.trafficStatistics(series.points, sampleSpacing: series.spacing)
+                    let stats = HistoryAnalyzer.trafficStatistics(series.trafficPoints, sampleSpacing: series.spacing)
+                    if stats.hasLegacyGaps {
+                        Text("旧版历史缺少有效时长，以下总量仅包含可核算的新样本；旧数据未删除。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if stats.isEstimated {
+                        Text("部分历史或边界分钟的总量、峰值为估算；未知时长不补齐。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     MetricRow(
                         title: "统计覆盖",
                         symbol: "clock",
                         value: MetricsFormatter.duration(stats.coverageSeconds),
-                        detail: "覆盖不足所选范围时仅统计已有数据，不外推",
+                        detail: "按有效采样时长累计；不补齐未监测时段",
                         tint: .green
                     )
                     MetricRow(
@@ -359,7 +367,7 @@ struct CPUDetailView: View {
                         ForEach(Array(summary.topByCPU.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
-                        Text("共 \(summary.processCount) 个进程 · CPU% 以单核 100% 为基准")
+                        Text("当前权限可读 \(summary.processCount) 个进程 · CPU% 以单核 100% 为基准")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     } else {

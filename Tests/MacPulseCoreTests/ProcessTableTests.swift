@@ -80,9 +80,92 @@ func testProcessListIsBoundedAndDepartedPIDsDisappear() {
     expect(departed.topByMemory.first?.pid == 300, "remaining processes still rank correctly")
 }
 
+func testChangedStartIdentityRebaselinesEvenWhenPIDNameAndCounterLookContinuous() {
+    let oldStart = ProcessStartIdentity(seconds: 100, microseconds: 10)
+    // The microseconds alone can distinguish two incarnations in one second.
+    let newStart = ProcessStartIdentity(seconds: 100, microseconds: 11)
+    var table = ProcessTable()
+    _ = table.update([
+        RawProcessSample(pid: 401, name: "worker", residentBytes: 100,
+                         cpuTimeNanoseconds: 100_000_000, startIdentity: oldStart)
+    ], at: 10)
+    let reused = table.update([
+        RawProcessSample(pid: 401, name: "worker", residentBytes: 200,
+                         cpuTimeNanoseconds: 500_000_000, startIdentity: newStart)
+    ], at: 11)
+    expect(reused.topByCPU.first?.cpuPercent == nil,
+           "changed start identity re-baselines the same PID/name despite a growing CPU counter")
+    expect(reused.topByMemory.first?.residentBytes == 200,
+           "replacement process still contributes its current resident bytes")
+
+    let stable = table.update([
+        RawProcessSample(pid: 401, name: "worker", residentBytes: 200,
+                         cpuTimeNanoseconds: 1_500_000_000, startIdentity: newStart)
+    ], at: 13)
+    expectNear(stable.topByCPU.first?.cpuPercent, 50,
+               "stable replacement identity uses nanoseconds over monotonic uptime seconds")
+
+    let laterStart = table.update([
+        RawProcessSample(pid: 401, name: "worker", residentBytes: 200,
+                         cpuTimeNanoseconds: 2_000_000_000,
+                         startIdentity: ProcessStartIdentity(seconds: 101, microseconds: 11))
+    ], at: 14)
+    expect(laterStart.topByCPU.first?.cpuPercent == nil,
+           "start identity compares seconds as well as microseconds")
+}
+
+func testStableIdentityCounterResetAndUptimeRollbackRebaseline() {
+    let identity = ProcessStartIdentity(seconds: 100, microseconds: 20)
+    func sample(_ cpu: UInt64) -> RawProcessSample {
+        RawProcessSample(pid: 402, name: "worker", residentBytes: 100,
+                         cpuTimeNanoseconds: cpu, startIdentity: identity)
+    }
+    var table = ProcessTable()
+    _ = table.update([sample(2_000_000_000)], at: 10)
+    let reset = table.update([sample(1_000_000_000)], at: 11)
+    expect(reset.topByCPU.first?.cpuPercent == nil,
+           "shrinking CPU counter still re-baselines an unchanged start identity")
+    let recovered = table.update([sample(1_500_000_000)], at: 12)
+    expectNear(recovered.topByCPU.first?.cpuPercent, 50,
+               "stable identity recovers from the reset baseline")
+    let rollback = table.update([sample(1_600_000_000)], at: 11)
+    expect(rollback.topByCPU.first?.cpuPercent == nil,
+           "non-monotonic uptime cannot produce a process CPU rate")
+}
+
+func testOptionalStartIdentityPreservesLegacyCallsButRebaselinesTransitions() {
+    let legacy = RawProcessSample(pid: 403, name: "worker", residentBytes: 100,
+                                  cpuTimeNanoseconds: 0)
+    expect(legacy.startIdentity == nil, "legacy sample construction defaults start identity to nil")
+    var table = ProcessTable()
+    _ = table.update([legacy], at: 10)
+    let legacyDelta = table.update([
+        RawProcessSample(pid: 403, name: "worker", residentBytes: 100,
+                         cpuTimeNanoseconds: 1_000_000_000)
+    ], at: 11)
+    expectNear(legacyDelta.topByCPU.first?.cpuPercent, 100,
+               "two legacy samples retain their existing CPU delta behavior")
+    let identified = table.update([
+        RawProcessSample(pid: 403, name: "worker", residentBytes: 100,
+                         cpuTimeNanoseconds: 2_000_000_000,
+                         startIdentity: ProcessStartIdentity(seconds: 100, microseconds: 30))
+    ], at: 12)
+    expect(identified.topByCPU.first?.cpuPercent == nil,
+           "gaining a start identity establishes a fresh baseline")
+    let unidentified = table.update([
+        RawProcessSample(pid: 403, name: "worker", residentBytes: 100,
+                         cpuTimeNanoseconds: 3_000_000_000)
+    ], at: 13)
+    expect(unidentified.topByCPU.first?.cpuPercent == nil,
+           "losing a start identity does not compare counters across unknown incarnations")
+}
+
 func runProcessTableTests() {
     testFirstProcessSampleRanksByMemoryWithoutInventingCPU()
     testSecondProcessSampleComputesCPUPercentFromWallTime()
     testProcessCounterResetAndInvalidTimeDoNotInventCPU()
     testProcessListIsBoundedAndDepartedPIDsDisappear()
+    testChangedStartIdentityRebaselinesEvenWhenPIDNameAndCounterLookContinuous()
+    testStableIdentityCounterResetAndUptimeRollbackRebaseline()
+    testOptionalStartIdentityPreservesLegacyCallsButRebaselinesTransitions()
 }
