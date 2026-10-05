@@ -60,13 +60,13 @@ struct PercentBar: View {
         HStack(spacing: 10) {
             Text(label)
                 .font(.subheadline)
-                .frame(width: 56, alignment: .leading)
+                .frame(minWidth: 56, alignment: .leading)
             if let percent, percent.isFinite {
                 ProgressView(value: min(max(percent, 0), 100) / 100)
                     .tint(tint)
                 Text(MetricsFormatter.percent(percent))
                     .font(.system(.callout, design: .rounded).weight(.semibold).monospacedDigit())
-                    .frame(width: 56, alignment: .trailing)
+                    .frame(minWidth: 56, alignment: .trailing)
             } else {
                 Text("—")
                     .font(.subheadline)
@@ -86,7 +86,7 @@ struct ProcessListRow: View {
             Text("\(rank)")
                 .font(.system(.caption, design: .rounded).monospacedDigit())
                 .foregroundStyle(.tertiary)
-                .frame(width: 18, alignment: .leading)
+                .frame(minWidth: 18, alignment: .leading)
             Text(stat.name)
                 .font(.callout)
                 .lineLimit(1)
@@ -95,12 +95,24 @@ struct ProcessListRow: View {
             Text(MetricsFormatter.bytes(stat.residentBytes))
                 .font(.system(.callout, design: .rounded).monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 84, alignment: .trailing)
+                .frame(minWidth: 84, alignment: .trailing)
             Text(MetricsFormatter.percent(stat.cpuPercent))
                 .font(.system(.callout, design: .rounded).weight(.semibold).monospacedDigit())
-                .frame(width: 56, alignment: .trailing)
+                .frame(minWidth: 56, alignment: .trailing)
         }
         .padding(.vertical, 3)
+    }
+}
+
+struct ProcessListHeader: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("#").frame(minWidth: 18, alignment: .leading)
+            Text("进程").font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text("内存").font(.caption).foregroundStyle(.secondary).frame(minWidth: 84, alignment: .trailing)
+            Text("CPU").font(.caption).foregroundStyle(.secondary).frame(minWidth: 56, alignment: .trailing)
+        }
     }
 }
 
@@ -126,7 +138,7 @@ struct MemoryDetailView: View {
 
                 DetailCard(title: "进程占用 · Top 10（按内存）") {
                     if let summary = store.processSummary, !summary.topByMemory.isEmpty {
-                        processHeader
+                        ProcessListHeader()
                         ForEach(Array(summary.topByMemory.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
@@ -150,15 +162,6 @@ struct MemoryDetailView: View {
         return MetricsFormatter.bytes(total - used)
     }
 
-    private var processHeader: some View {
-        HStack(spacing: 10) {
-            Text("#").frame(width: 18, alignment: .leading)
-            Text("进程").font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text("内存").font(.caption).foregroundStyle(.secondary).frame(width: 84, alignment: .trailing)
-            Text("CPU").font(.caption).foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
-        }
-    }
 }
 
 struct DiskDetailView: View {
@@ -208,7 +211,6 @@ struct DiskDetailView: View {
 
 struct NetworkDetailView: View {
     @ObservedObject var store: MonitorStore
-    @State private var trafficRange: HistoryRange = .fifteenMinutes
 
     private var snapshot: MetricsSnapshot? { store.snapshot }
 
@@ -220,7 +222,7 @@ struct NetworkDetailView: View {
                 }
 
                 DetailCard(title: "流量统计") {
-                    Picker("统计时段", selection: $trafficRange) {
+                    Picker("统计时段", selection: $store.trafficRange) {
                         ForEach(HistoryRange.allCases, id: \.self) { range in
                             Text(range.label).tag(range)
                         }
@@ -228,7 +230,7 @@ struct NetworkDetailView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
 
-                    let series = store.series(for: trafficRange)
+                    let series = store.series(for: store.trafficRange)
                     let stats = HistoryAnalyzer.trafficStatistics(series.trafficPoints, sampleSpacing: series.spacing)
                     if stats.hasLegacyGaps {
                         Text("旧版历史缺少有效时长，以下总量仅包含可核算的新样本；旧数据未删除。")
@@ -245,20 +247,24 @@ struct NetworkDetailView: View {
                         detail: "按有效采样时长累计；不补齐未监测时段",
                         tint: .green
                     )
-                    MetricRow(
-                        title: "接收总量",
-                        symbol: "arrow.down.circle",
-                        value: MetricsFormatter.bytes(stats.receivedBytes),
-                        detail: "峰值 \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))",
-                        tint: .green
-                    )
-                    MetricRow(
-                        title: "发送总量",
-                        symbol: "arrow.up.circle",
-                        value: MetricsFormatter.bytes(stats.sentBytes),
-                        detail: "峰值 \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))",
-                        tint: .green
-                    )
+                        MetricRow(
+                            title: "接收总量",
+                            symbol: "arrow.down.circle",
+                            value: MetricsFormatter.bytes(stats.receivedBytes),
+                            detail: stats.isEstimated
+                                ? "峰值≈ \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))"
+                                : "峰值 \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))",
+                            tint: .green
+                        )
+                        MetricRow(
+                            title: "发送总量",
+                            symbol: "arrow.up.circle",
+                            value: MetricsFormatter.bytes(stats.sentBytes),
+                            detail: stats.isEstimated
+                                ? "峰值≈ \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))"
+                                : "峰值 \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))",
+                            tint: .green
+                        )
                 }
 
                 DetailCard(title: "连接状态") {
@@ -271,7 +277,7 @@ struct NetworkDetailView: View {
                                 .font(.system(.body, design: .rounded).weight(.medium))
                         }
                     } else {
-                        Text("检测中…")
+                        Text("采集中…")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -363,7 +369,7 @@ struct CPUDetailView: View {
 
                 DetailCard(title: "进程占用 · Top 10（按 CPU）") {
                     if let summary = store.processSummary, !summary.topByCPU.isEmpty {
-                        processHeader
+                        ProcessListHeader()
                         ForEach(Array(summary.topByCPU.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
@@ -379,13 +385,4 @@ struct CPUDetailView: View {
         }
     }
 
-    private var processHeader: some View {
-        HStack(spacing: 10) {
-            Text("#").frame(width: 18, alignment: .leading)
-            Text("进程").font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text("内存").font(.caption).foregroundStyle(.secondary).frame(width: 84, alignment: .trailing)
-            Text("CPU").font(.caption).foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
-        }
-    }
 }

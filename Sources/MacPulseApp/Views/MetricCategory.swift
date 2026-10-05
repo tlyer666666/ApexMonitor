@@ -32,4 +32,14 @@ enum MetricCategory: String, CaseIterable, Hashable {
         case .network: return .green
         }
     }
+
+    /// Headline metric on a MetricPoint, used for sparklines and quick stats.
+    var pointKeyPath: KeyPath<MetricPoint, Double?> {
+        switch self {
+        case .cpu: return \.cpu
+        case .memory: return \.memory
+        case .disk: return \.diskRead
+        case .network: return \.networkReceive
+        }
+    }
 }

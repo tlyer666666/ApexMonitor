@@ -11,8 +11,11 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var pathStatus: NetworkPathStatus?
     @Published private(set) var loadAverage: LoadAverage?
     @Published private(set) var historyError: String?
+    @Published private(set) var lastUpdateDate: Date?
     @Published var navigationPath: [MetricCategory] = []
     @Published var selectedRange: HistoryRange = .fifteenMinutes
+    /// Lives here (not in view @State) so the choice survives navigation.
+    @Published var trafficRange: HistoryRange = .fifteenMinutes
     @Published private var historyRevision: UInt64 = 0
 
     private let sampler = MetricsSampler()
@@ -48,6 +51,7 @@ final class MonitorStore: ObservableObject {
             let completed = self.history.record(snapshot, at: date)
             self.interfaceRuntimeTotals = totals
             self.historyRevision &+= 1
+            self.lastUpdateDate = date
             self.snapshot = snapshot
             if completed {
                 self.bucketsSinceSave += 1

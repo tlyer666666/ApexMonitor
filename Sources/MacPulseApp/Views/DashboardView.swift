@@ -46,11 +46,27 @@ struct DashboardView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if let updated = lastUpdateAge {
+                    Text(updated)
+                        .font(.system(.caption2, design: .rounded).monospacedDigit())
+                        .foregroundStyle(lastUpdateStale ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
+                }
                 Text("历史数据仅保存在本机")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private var lastUpdateAge: String? {
+        guard let date = store.lastUpdateDate else { return nil }
+        let age = Int(Date().timeIntervalSince(date))
+        return age < 2 ? "刚刚更新" : "最后更新 \(age) 秒前"
+    }
+
+    private var lastUpdateStale: Bool {
+        guard let date = store.lastUpdateDate else { return false }
+        return Date().timeIntervalSince(date) > 3
     }
 
     private var rangePicker: some View {
@@ -67,109 +83,62 @@ struct DashboardView: View {
 
     private var currentGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            Button {
-                store.navigationPath.append(.cpu)
-            } label: {
-                CurrentMetricCard(
-                    title: "CPU",
-                    symbol: "cpu",
-                    value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
-                    detail: "总使用率",
-                    tint: .blue
-                )
+            ForEach([MetricCategory.cpu, .memory, .disk, .network], id: \.self) { category in
+                Button {
+                    store.navigationPath.append(category)
+                } label: {
+                    CurrentMetricCard(
+                        title: category.title,
+                        symbol: category.symbol,
+                        value: category.currentValue(metrics),
+                        detail: cardDetail(for: category),
+                        tint: category.tint
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(category.title)详情")
+                .accessibilityValue(category.currentValue(metrics))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("CPU详情")
-            .accessibilityValue(MetricsFormatter.cpuPercent(metrics?.cpuPercent))
+        }
+    }
 
-            Button {
-                store.navigationPath.append(.memory)
-            } label: {
-                CurrentMetricCard(
-                    title: "内存",
-                    symbol: "memorychip",
-                    value: metrics.map { MetricsFormatter.percent($0.memoryPercent) } ?? "采集中",
-                    detail: memoryDetail,
-                    tint: .purple
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("内存详情")
-            .accessibilityValue(memoryDetail)
-
-            Button {
-                store.navigationPath.append(.disk)
-            } label: {
-                CurrentMetricCard(
-                    title: "磁盘读取",
-                    symbol: "arrow.down.circle",
-                    value: MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond),
-                    detail: "写入 \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
-                    tint: .orange
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("磁盘详情")
-            .accessibilityValue(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))
-
-            Button {
-                store.navigationPath.append(.network)
-            } label: {
-                CurrentMetricCard(
-                    title: "网络接收",
-                    symbol: "arrow.down.circle",
-                    value: MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond),
-                    detail: "发送 \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
-                    tint: .green
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("网络详情")
-            .accessibilityValue(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))
+    private func cardDetail(for category: MetricCategory) -> String {
+        switch category {
+        case .cpu:
+            return category.headline
+        case .memory:
+            return memoryDetail
+        case .disk:
+            return "\(category.headline) \(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond)) · \(category.secondaryHeadline ?? "") \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))"
+        case .network:
+            return "\(category.headline) \(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond)) · \(category.secondaryHeadline ?? "") \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))"
         }
     }
 
     private func chartGrid(_ points: [MetricPoint]) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-            HistoryChartCard(
-                title: "处理器",
-                symbol: "cpu",
-                tint: .blue,
-                points: points,
-                metrics: [("使用率", \.cpu, MetricsFormatter.percent)],
-                percentDomain: true
-            )
-            HistoryChartCard(
-                title: "内存",
-                symbol: "memorychip",
-                tint: .purple,
-                points: points,
-                metrics: [("占用", \.memory, MetricsFormatter.percent)],
-                percentDomain: true
-            )
-            HistoryChartCard(
-                title: "磁盘 I/O",
-                symbol: "internaldrive",
-                tint: .orange,
-                points: points,
-                metrics: [
-                    ("读取", \.diskRead, MetricsFormatter.bytesPerSecond),
-                    ("写入", \.diskWrite, MetricsFormatter.bytesPerSecond)
-                ],
-                percentDomain: false
-            )
-            HistoryChartCard(
-                title: "网络",
-                symbol: "network",
-                tint: .green,
-                points: points,
-                metrics: [
-                    ("接收", \.networkReceive, MetricsFormatter.bytesPerSecond),
-                    ("发送", \.networkSend, MetricsFormatter.bytesPerSecond)
-                ],
-                percentDomain: false
-            )
+            chartCard(.cpu, points: points, metric: ("使用率", \.cpu, MetricsFormatter.percent), secondary: nil)
+            chartCard(.memory, points: points, metric: ("占用", \.memory, MetricsFormatter.percent), secondary: nil)
+            chartCard(.disk, points: points,
+                      metric: ("读取", \.diskRead, MetricsFormatter.bytesPerSecond),
+                      secondary: ("写入", \.diskWrite, MetricsFormatter.bytesPerSecond))
+            chartCard(.network, points: points,
+                      metric: ("接收", \.networkReceive, MetricsFormatter.bytesPerSecond),
+                      secondary: ("发送", \.networkSend, MetricsFormatter.bytesPerSecond))
         }
+    }
+
+    private func chartCard(_ category: MetricCategory, points: [MetricPoint],
+                           metric: (String, KeyPath<MetricPoint, Double?>, (Double?) -> String),
+                           secondary: (String, KeyPath<MetricPoint, Double?>, (Double?) -> String)?) -> some View {
+        HistoryChartCard(
+            title: category.title,
+            symbol: category.symbol,
+            tint: category.tint,
+            points: points,
+            metrics: secondary.map { [metric, $0] } ?? [metric],
+            percentDomain: category == .cpu || category == .memory
+        )
     }
 
     private var footer: some View {
