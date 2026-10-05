@@ -1,16 +1,35 @@
 import Foundation
 
+/// Process birth time from libproc; used only for identity, never for elapsed time.
+public struct ProcessStartIdentity: Sendable, Equatable {
+    public let seconds: UInt64
+    public let microseconds: UInt64
+
+    public init(seconds: UInt64, microseconds: UInt64) {
+        self.seconds = seconds
+        self.microseconds = microseconds
+    }
+}
+
 public struct RawProcessSample: Sendable, Equatable {
     public let pid: Int32
     public let name: String?
     public let residentBytes: UInt64
     public let cpuTimeNanoseconds: UInt64
+    public let startIdentity: ProcessStartIdentity?
 
-    public init(pid: Int32, name: String?, residentBytes: UInt64, cpuTimeNanoseconds: UInt64) {
+    public init(
+        pid: Int32,
+        name: String?,
+        residentBytes: UInt64,
+        cpuTimeNanoseconds: UInt64,
+        startIdentity: ProcessStartIdentity? = nil
+    ) {
         self.pid = pid
         self.name = name
         self.residentBytes = residentBytes
         self.cpuTimeNanoseconds = cpuTimeNanoseconds
+        self.startIdentity = startIdentity
     }
 }
 
@@ -28,11 +47,12 @@ public struct ProcessSummary: Sendable, Equatable {
 }
 
 public struct ProcessTable {
-    /// Entry cap for the ranked lists; the raw process count is reported separately.
+    /// Top entries within the readable sample, not a census of all system processes.
     public static let topLimit = 10
 
     private struct State {
         var cpuTimeNanoseconds: UInt64
+        var startIdentity: ProcessStartIdentity?
     }
 
     private var previous: [Int32: State] = [:]
@@ -40,6 +60,7 @@ public struct ProcessTable {
 
     public init() {}
 
+    /// `time` is monotonic system uptime in seconds, not a wall-clock timestamp.
     public mutating func update(_ samples: [RawProcessSample], at time: Double) -> ProcessSummary {
         let elapsed: Double? = {
             guard let previousTime else { return nil }
@@ -56,17 +77,22 @@ public struct ProcessTable {
             let name = sample.name?.isEmpty == false ? sample.name! : "pid \(sample.pid)"
             let cpuPercent: Double?
             if let previous = previous[sample.pid],
+               previous.startIdentity == sample.startIdentity,
                let elapsed,
                sample.cpuTimeNanoseconds >= previous.cpuTimeNanoseconds {
                 let delta = sample.cpuTimeNanoseconds - previous.cpuTimeNanoseconds
                 let percent = Double(delta) / (elapsed * 1_000_000_000) * 100
                 cpuPercent = percent.isFinite ? max(percent, 0) : nil
             } else {
-                // First sighting, pid reuse (shrinking counter), or invalid
+                // First sighting, changed identity, counter reset, or invalid
                 // elapsed time: re-baseline instead of fabricating a rate.
+                // Two nil identities retain legacy sample behavior.
                 cpuPercent = nil
             }
-            next[sample.pid] = State(cpuTimeNanoseconds: sample.cpuTimeNanoseconds)
+            next[sample.pid] = State(
+                cpuTimeNanoseconds: sample.cpuTimeNanoseconds,
+                startIdentity: sample.startIdentity
+            )
             stats.append(ProcessStat(pid: sample.pid, name: name, cpuPercent: cpuPercent, residentBytes: sample.residentBytes))
         }
 

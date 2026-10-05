@@ -4,7 +4,12 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
-    private let store = MonitorStore()
+    private let store: MonitorStore
+
+    init(historyFile: HistoryFileStore = .defaultStore()) {
+        store = MonitorStore(historyFile: historyFile)
+        super.init()
+    }
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var dashboardWindow: NSWindow?
@@ -165,6 +170,7 @@ extension AppDelegate: NSWindowDelegate {
     }
 }
 
+#if !MACPULSE_INTEGRATION
 @main
 struct MacPulseApplication {
     static func main() {
@@ -174,3 +180,4 @@ struct MacPulseApplication {
         application.run()
     }
 }
+#endif

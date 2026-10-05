@@ -19,12 +19,24 @@ public struct HistoryFileStore: Sendable {
         return HistoryFileStore(directory: base.appendingPathComponent("MacPulse", isDirectory: true))
     }
 
-    public func load() -> [MinuteBucket] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+    public func read() throws -> [MinuteBucket] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        guard (attributes[.size] as? NSNumber)?.int64Value ?? 0 <= 64 * 1_024 * 1_024 else {
+            throw CocoaError(.fileReadTooLarge)
+        }
+        let data = try Data(contentsOf: fileURL)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let buckets = try? decoder.decode([MinuteBucket].self, from: data) else { return [] }
+        let buckets = try decoder.decode([MinuteBucket].self, from: data)
+        guard buckets.count <= 100_000, buckets.allSatisfy(\.isValidHistory) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
         return buckets
+    }
+
+    public func load() -> [MinuteBucket] {
+        (try? read()) ?? []
     }
 
     @discardableResult
