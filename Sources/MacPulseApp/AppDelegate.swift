@@ -26,11 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         openDashboard()
     }
 
-    /// Double-clicking the Desktop shortcut (or `open`) on an already-running
-    /// instance must also surface the dashboard, even when the window was
-    /// closed earlier. `hasVisibleWindows` is unreliable here because the
-    /// status item's own window is always on screen, so unconditionally call
-    /// the idempotent open: it focuses the retained window or recreates it.
+    /// Reopening the app while it runs must surface the dashboard; the status
+    /// item keeps a window on screen, so `hasVisibleWindows` cannot be trusted.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openDashboard()
         return true

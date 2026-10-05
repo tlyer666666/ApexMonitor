@@ -68,8 +68,8 @@ final class DetailSampler {
     }
 }
 
-// A fresh worker belongs to one sampling session and is used only by the
-// serial detail queue; restarting always discards process CPU baselines.
+// One worker per detail session on the serial queue; restarting discards
+// process CPU baselines.
 private final class DetailWorker: @unchecked Sendable {
     let read: DetailSampler.Reader
     var table = ProcessTable()
