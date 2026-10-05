@@ -49,8 +49,8 @@ final class MetricsSampler {
     deinit { timer?.cancel() }
 }
 
-// The worker is created per start and accessed exclusively by the serial
-// sampling queue. Snapshot and interface totals travel in one delivery.
+// One worker per sampling session on the serial queue; the snapshot and the
+// interface totals travel in a single delivery.
 private final class SamplingWorker: @unchecked Sendable {
     let read: MetricsSampler.Reader
     let interfaces: MetricsSampler.Interfaces

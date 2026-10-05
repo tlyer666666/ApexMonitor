@@ -5,9 +5,8 @@ struct HistoryRepositoryResult: Sendable {
     let error: String?
 }
 
-// The disk baseline is immutable during one app session. Every write replaces
-// it with baseline + the current session snapshot; no save re-merges its own
-// previous output. All I/O and baseline state stay on this serial queue.
+// Each write is the fixed session-start baseline plus the current session
+// snapshot, so a save never re-merges its own output. Serial queue only.
 final class HistoryRepository: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.macpulse.history", qos: .utility)
     private let file: HistoryFileStore

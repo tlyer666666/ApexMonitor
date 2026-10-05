@@ -1,7 +1,7 @@
 import Foundation
 
-/// Sufficient statistics for one metric. Counts weight chart means; durations
-/// and byte integrals are independent of those counts and of timer cadence.
+/// Per-metric aggregates for one minute bucket. validCount weights chart means;
+/// durations and byte integrals are tracked separately from it.
 public struct MetricAggregateMetadata: Codable, Sendable, Equatable {
     public fileprivate(set) var validCount: Int = 0
     public fileprivate(set) var valueSum: Double = 0
@@ -123,9 +123,8 @@ public struct HistoryMetadata: Codable, Sendable, Equatable {
         return result
     }
 
-    /// Individual samples are not persisted. A boundary through their span can
-    /// only prorate integrals; unchanged peaks may lie outside the clipped span.
-    /// Callers must expose isEstimated for both totals and peak statistics.
+    /// Boundaries inside a persisted bucket can only prorate integrals; the
+    /// result is marked estimated, including its peaks.
     fileprivate func scaled(by fraction: Double) -> Self {
         guard fraction < 1 else { return self }
         var result = self
@@ -413,10 +412,8 @@ public enum HistoryAnalyzer {
         )
     }
 
-    /// Metadata is authoritative, regardless of sampleSpacing. The spacing
-    /// fallback is only for explicitly constructed raw points without metadata;
-    /// that integration is marked estimated. minuteSeries always adds metadata,
-    /// including an explicit unknown-coverage marker for legacy buckets.
+    /// Metadata wins over sampleSpacing; the spacing fallback only applies to
+    /// raw points built without it, and that integration is marked estimated.
     public static func trafficStatistics(
         _ points: [MetricPoint],
         sampleSpacing seconds: Double
