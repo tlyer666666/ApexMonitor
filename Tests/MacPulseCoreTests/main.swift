@@ -1,0 +1,12 @@
+import Foundation
+
+runMetricsCalculatorTests()
+runMetricsFormatterTests()
+runMetricBoundaryTests()
+testNetworkCounterAccumulatorUnwrapsEachInterfaceBeforeSumming()
+testNetworkCounterAccumulatorDoesNotTurnOrdinaryResetIntoTraffic()
+testNetworkCounterAccumulatorKeepsTotalsMonotonicWhenInterfaceDeparts()
+testNetworkCounterAccumulatorKeepsTotalsWhenAllInterfacesDepartAndRejoin()
+try runMetricsHistoryTests()
+runProcessTableTests()
+finishTests()
