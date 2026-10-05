@@ -79,6 +79,8 @@ struct DashboardView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("CPU详情")
+            .accessibilityValue(MetricsFormatter.cpuPercent(metrics?.cpuPercent))
 
             Button {
                 store.navigationPath.append(.memory)
@@ -92,6 +94,8 @@ struct DashboardView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("内存详情")
+            .accessibilityValue(memoryDetail)
 
             Button {
                 store.navigationPath.append(.disk)
@@ -105,6 +109,8 @@ struct DashboardView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("磁盘详情")
+            .accessibilityValue(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))
 
             Button {
                 store.navigationPath.append(.network)
@@ -118,6 +124,8 @@ struct DashboardView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("网络详情")
+            .accessibilityValue(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))
         }
     }
 
@@ -165,11 +173,14 @@ struct DashboardView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 6) {
-                Text("当前范围：\(store.selectedRange.label) · 短周期显示逐秒明细，更长周期显示分钟级均值 · 历史保留 7 天")
+        VStack(alignment: .leading, spacing: 6) {
+            Text("当前范围：\(store.selectedRange.label) · 历史分钟均值与本次运行明细 · 保留 7 天")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Spacer()
+            if let error = store.historyError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
         }
     }
 

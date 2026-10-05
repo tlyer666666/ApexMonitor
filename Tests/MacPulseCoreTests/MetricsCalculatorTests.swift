@@ -157,7 +157,23 @@ func testShrinkingNetworkTotalsNeverFabricateRate() {
     expect(snapshot.networkReceiveBytesPerSecond == nil, "shrinking runtime network totals produce no rate instead of a fabricated spike")
 }
 
+func testLongSamplingGapRebaselinesInsteadOfReportingOldActivity() {
+    func sample(_ time: Double, _ count: UInt64) -> RawMetricsSample {
+        .init(uptime: time, cpu: .init(user: count, system: 0, idle: count, nice: 0),
+              memoryUsedBytes: 1, memoryTotalBytes: 2, diskReadBytes: count,
+              diskWrittenBytes: count, networkReceivedBytes: count, networkSentBytes: count)
+    }
+    var calculator = MetricsCalculator()
+    _ = calculator.update(sample(1, 100))
+    let wake = calculator.update(sample(601, 900))
+    expect(wake.cpuPercent == nil && wake.networkReceiveBytesPerSecond == nil,
+           "long sampling gaps rebaseline instead of reporting sleep as current activity")
+    let next = calculator.update(sample(602, 1_000))
+    expectNear(next.networkReceiveBytesPerSecond, 100, "sampling resumes normally after a gap")
+}
+
 func runMetricsCalculatorTests() {
+    testLongSamplingGapRebaselinesInsteadOfReportingOldActivity()
     testCalculatesCPUAndByteRatesFromCounterDeltas()
     testMultiCoreCPUIsNormalizedToTotalProcessorCapacity()
     testFirstSampleAndCounterResetDoNotInventRates()

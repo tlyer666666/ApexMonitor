@@ -108,7 +108,7 @@ struct HistoryChartCard: View {
                 Spacer()
                 if let primary = stats.first {
                     StatChip(label: "平均", value: metrics[0].formatter(primary.average))
-                    StatChip(label: "峰值", value: metrics[0].formatter(primary.peak))
+                    StatChip(label: primary.isEstimated ? "峰值≈" : "峰值", value: metrics[0].formatter(primary.peak))
                 }
             }
 

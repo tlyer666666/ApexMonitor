@@ -31,7 +31,17 @@ func testFormatsCoverageDurationAndDoubleByteTotals() {
     expect(MetricsFormatter.bytes(nil as Double?) == "—", "missing byte totals use an em dash")
 }
 
+func testPercentFormattingRejectsInvalidValues() {
+    expect(MetricsFormatter.percent(-1) == "—", "negative usage is unavailable, not a negative percentage")
+    expect(MetricsFormatter.cpuPercent(-1) == "—", "CPU formatting rejects negative usage")
+    expect(MetricsFormatter.percent(.infinity) == "—", "infinite usage stays unavailable")
+    expect(MetricsFormatter.percent(250) == "250%", "process CPU above one core stays representable")
+    expect(MetricsFormatter.percent(1e20) == "—", "huge finite percentages cannot trap integer conversion")
+    expect(MetricsFormatter.cpuPercent(Double.greatestFiniteMagnitude) == "—", "huge finite CPU values are unavailable")
+}
+
 func runMetricsFormatterTests() {
+    testPercentFormattingRejectsInvalidValues()
     testFormatsMetricUnitsAndUnavailableValues()
     testFormatsMemoryUsedAndTotalTogether()
     testFormatsCoverageDurationAndDoubleByteTotals()

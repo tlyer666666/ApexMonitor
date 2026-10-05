@@ -9,7 +9,7 @@ public struct MetricsCalculator {
         let elapsed: Double? = {
             guard let previous else { return nil }
             let value = sample.uptime - previous.uptime
-            guard value.isFinite, value > 0 else { return nil }
+            guard value.isFinite, value > 0, value <= 5 else { return nil }
             return value
         }()
 
@@ -22,9 +22,9 @@ public struct MetricsCalculator {
                   let system = nonnegativeDelta(oldCPU.system, newCPU.system),
                   let idle = nonnegativeDelta(oldCPU.idle, newCPU.idle),
                   let nice = nonnegativeDelta(oldCPU.nice, newCPU.nice) else { return nil }
-            let total = user + system + idle + nice
-            guard total > 0 else { return nil }
-            let ratio: (UInt64) -> Double = { Double($0) / Double(total) * 100 }
+            let total = Double(user) + Double(system) + Double(idle) + Double(nice)
+            guard total.isFinite, total > 0 else { return nil }
+            let ratio: (UInt64) -> Double = { Double($0) / total * 100 }
             return (ratio(user), ratio(system), ratio(nice), ratio(idle))
         }()
 
@@ -55,7 +55,8 @@ public struct MetricsCalculator {
             diskReadBytesPerSecond: rate(from: previous?.diskReadBytes, to: sample.diskReadBytes, elapsed: elapsed),
             diskWriteBytesPerSecond: rate(from: previous?.diskWrittenBytes, to: sample.diskWrittenBytes, elapsed: elapsed),
             networkReceiveBytesPerSecond: rate(from: previous?.networkReceivedBytes, to: sample.networkReceivedBytes, elapsed: elapsed),
-            networkSendBytesPerSecond: rate(from: previous?.networkSentBytes, to: sample.networkSentBytes, elapsed: elapsed)
+            networkSendBytesPerSecond: rate(from: previous?.networkSentBytes, to: sample.networkSentBytes, elapsed: elapsed),
+            sampleDurationSeconds: elapsed ?? 0
         )
         previous = sample
         return snapshot

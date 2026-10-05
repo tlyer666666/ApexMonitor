@@ -2,13 +2,13 @@ import Foundation
 
 public enum MetricsFormatter {
     public static func percent(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "—" }
-        return "\(Int(value.rounded()))%"
+        guard let value, value.isFinite, value >= 0,
+              let rounded = Int(exactly: value.rounded()) else { return "—" }
+        return "\(rounded)%"
     }
 
     public static func cpuPercent(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "—" }
-        return "\(Int(value.rounded()))%"
+        percent(value)
     }
 
     public static func bytes(_ value: UInt64?) -> String {

@@ -59,6 +59,7 @@ public struct MetricsSnapshot: Sendable, Equatable {
     public let diskWriteBytesPerSecond: Double?
     public let networkReceiveBytesPerSecond: Double?
     public let networkSendBytesPerSecond: Double?
+    public let sampleDurationSeconds: Double?
 
     public init(
         timestamp: Double,
@@ -73,7 +74,8 @@ public struct MetricsSnapshot: Sendable, Equatable {
         diskReadBytesPerSecond: Double?,
         diskWriteBytesPerSecond: Double?,
         networkReceiveBytesPerSecond: Double?,
-        networkSendBytesPerSecond: Double?
+        networkSendBytesPerSecond: Double?,
+        sampleDurationSeconds: Double? = nil
     ) {
         self.timestamp = timestamp
         self.cpuPercent = cpuPercent
@@ -88,5 +90,6 @@ public struct MetricsSnapshot: Sendable, Equatable {
         self.diskWriteBytesPerSecond = diskWriteBytesPerSecond
         self.networkReceiveBytesPerSecond = networkReceiveBytesPerSecond
         self.networkSendBytesPerSecond = networkSendBytesPerSecond
+        self.sampleDurationSeconds = sampleDurationSeconds
     }
 }
