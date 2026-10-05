@@ -96,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.contentSize = NSSize(width: 330, height: 390)
+        // No fixed contentSize: the hosting controller reports its fitting
+        // size, so the quit buttons can never be clipped by a stale height.
         popover.contentViewController = NSHostingController(
             rootView: MenuPopoverView(
                 store: store,
@@ -149,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "MacPulse · 系统性能"
         window.setContentSize(NSSize(width: 800, height: 700))
-        window.minSize = NSSize(width: 760, height: 640)
+        window.minSize = NSSize(width: 780, height: 680)
         window.center()
         window.isReleasedWhenClosed = false
         window.delegate = self

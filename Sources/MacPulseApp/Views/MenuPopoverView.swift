@@ -27,66 +27,26 @@ struct MenuPopoverView: View {
 
             Divider()
 
-            Button {
-                onOpenCategory(.cpu)
-            } label: {
-                MetricRow(
-                    title: "CPU",
-                    symbol: "cpu",
-                    value: metrics.map { MetricsFormatter.cpuPercent($0.cpuPercent) } ?? "采集中",
-                    detail: metrics?.cpuPercent == nil ? "等待下一次有效采样" : "总使用率 · 最近 5 分钟",
-                    showsChevron: true
-                )
-                .contentShape(Rectangle())
+            ForEach([MetricCategory.cpu, .memory, .disk, .network], id: \.self) { category in
+                Button {
+                    onOpenCategory(category)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        popoverRow(category)
+                        MiniSparkline(
+                            values: store.series(for: .fiveMinutes).points.map { $0[keyPath: category.pointKeyPath] },
+                            tint: category.tint
+                        )
+                        .padding(.leading, 42)
+                        .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(category.title)详情")
+                .accessibilityValue(rowValue(category))
             }
-            .buttonStyle(.plain)
-            MiniSparkline(values: store.points(for: .fiveMinutes).map(\.cpu))
-                .padding(.bottom, 2)
-
-            Button {
-                onOpenCategory(.memory)
-            } label: {
-                MetricRow(
-                    title: "内存",
-                    symbol: "memorychip",
-                    value: memoryValue,
-                    detail: memoryDetail,
-                    tint: .purple,
-                    showsChevron: true
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                onOpenCategory(.disk)
-            } label: {
-                MetricRow(
-                    title: "磁盘",
-                    symbol: "internaldrive",
-                    value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))",
-                    detail: "读取 / 写入",
-                    tint: .orange,
-                    showsChevron: true
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                onOpenCategory(.network)
-            } label: {
-                MetricRow(
-                    title: "网络",
-                    symbol: "network",
-                    value: "↓ \(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))",
-                    detail: "接收 / 发送",
-                    tint: .green,
-                    showsChevron: true
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
 
             Divider()
 
@@ -105,14 +65,43 @@ struct MenuPopoverView: View {
             .buttonStyle(.plain)
         }
         .padding(16)
-        .frame(width: 330)
+        .frame(width: 320)
         .background(.regularMaterial)
     }
 
-    private var memoryValue: String {
-        guard let metrics else { return "采集中" }
-        guard let percentage = metrics.memoryPercent else { return "—" }
-        return "\(Int(percentage.rounded()))%"
+    private func popoverRow(_ category: MetricCategory) -> some View {
+        MetricRow(
+            title: category.title,
+            symbol: category.symbol,
+            value: rowValue(category),
+            detail: rowDetail(category),
+            tint: category.tint,
+            showsChevron: true
+        )
+    }
+
+    private func rowValue(_ category: MetricCategory) -> String {
+        switch category {
+        case .cpu, .memory:
+            return category.currentValue(metrics)
+        case .disk:
+            return "↓ \(MetricsFormatter.bytesPerSecond(metrics?.diskReadBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.diskWriteBytesPerSecond))"
+        case .network:
+            return "↓ \(MetricsFormatter.bytesPerSecond(metrics?.networkReceiveBytesPerSecond))  ↑ \(MetricsFormatter.bytesPerSecond(metrics?.networkSendBytesPerSecond))"
+        }
+    }
+
+    private func rowDetail(_ category: MetricCategory) -> String {
+        switch category {
+        case .cpu:
+            return metrics?.cpuPercent == nil ? "等待下一次有效采样" : "总使用率 · 最近 5 分钟"
+        case .memory:
+            return memoryDetail
+        case .disk:
+            return "读取 / 写入"
+        case .network:
+            return "接收 / 发送"
+        }
     }
 
     private var memoryDetail: String {

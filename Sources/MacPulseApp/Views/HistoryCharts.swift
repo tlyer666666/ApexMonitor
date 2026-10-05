@@ -117,7 +117,12 @@ struct HistoryChartCard: View {
                 tint: tint,
                 percentDomain: percentDomain
             )
-            .frame(height: 110)
+            .frame(height: DesignSystem.Chart.height)
+            .overlay {
+                if points.allSatisfy({ $0[keyPath: metrics[0].keyPath] == nil }) {
+                    CollectingPlaceholder(text: "正在建立基线…")
+                }
+            }
 
             if metrics.count > 1 {
                 HStack(spacing: 12) {
@@ -180,10 +185,11 @@ struct CurrentMetricCard: View {
 
 struct MiniSparkline: View {
     let values: [Double?]
+    var tint: Color = .accentColor
 
     var body: some View {
         MemoryTrendShape(values: values.compactMap { $0 })
-            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-            .frame(height: 24)
+            .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            .frame(height: DesignSystem.Chart.sparkline)
     }
 }
