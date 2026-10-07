@@ -33,7 +33,7 @@ final class MonitorStore: ObservableObject {
         repository = HistoryRepository(file: historyFile)
     }
 
-    func start() {
+    func start(interval: TimeInterval = 1) {
         guard !isRunning else { return }
         isRunning = true
         lifecycle &+= 1
@@ -61,12 +61,24 @@ final class MonitorStore: ObservableObject {
                 }
             }
         }
+        sampler.updateInterval(interval)
         pathMonitor = NetworkPathMonitor { [weak self] status in
             Task { @MainActor [weak self] in
                 guard let self, self.isRunning, self.lifecycle == token else { return }
                 self.pathStatus = status
             }
         }
+    }
+
+    /// Recent CPU percentages (oldest first) for the menu bar mini-graph.
+    func recentCPUPercents(limit: Int = 30) -> [Double?] {
+        Array(history.recentSamples.suffix(limit).map { $0.snapshot.cpuPercent })
+    }
+
+    /// Applies a new sampling cadence without dropping counters or baselines.
+    func setUpdateInterval(_ seconds: TimeInterval) {
+        guard isRunning else { return }
+        sampler.updateInterval(seconds)
     }
 
     func stop() {

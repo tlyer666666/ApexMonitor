@@ -24,6 +24,7 @@ swiftc "${OPTIMIZATION[@]}" \
   Sources/MacPulseCore/*.swift \
   Sources/MacPulseApp/Monitoring/*.swift \
   Sources/MacPulseApp/LaunchAtLogin.swift \
+  Sources/MacPulseApp/AppSettings.swift \
   Sources/MacPulseApp/Views/*.swift \
   Sources/MacPulseApp/AppDelegate.swift \
   -o "$BINARY"

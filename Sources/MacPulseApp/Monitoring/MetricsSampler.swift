@@ -5,11 +5,15 @@ final class MetricsSampler {
     typealias Reader = @Sendable (NetworkCounterTotals?) -> RawMetricsSample
     typealias Interfaces = @Sendable () -> [String: NetworkInterfaceCounters]?
 
+    typealias Deliver = @MainActor (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) -> Void
+
     private let queue = DispatchQueue(label: "com.macpulse.metrics", qos: .utility)
     private let read: Reader
     private let interfaces: Interfaces
-    private let interval: TimeInterval
+    private var interval: TimeInterval
     private var timer: DispatchSourceTimer?
+    private var worker: SamplingWorker?
+    private var deliver: Deliver?
     private var generation: UInt64 = 0
 
     init(interval: TimeInterval = 1,
@@ -23,20 +27,19 @@ final class MetricsSampler {
 
     func start(deliver: @escaping @MainActor (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) -> Void) {
         guard timer == nil else { return }
-        generation &+= 1
-        let token = generation
-        let worker = SamplingWorker(read: read, interfaces: interfaces)
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(150))
-        timer.setEventHandler { [weak self] in
-            let result = worker.sample()
-            Task { @MainActor [weak self] in
-                guard let self, self.generation == token, self.timer != nil else { return }
-                deliver(result.0, result.1, result.2)
-            }
-        }
-        self.timer = timer
-        timer.resume()
+        self.deliver = deliver
+        spawnTimer()
+    }
+
+    /// Changes the cadence without discarding counters: the worker (and its
+    /// baselines) survives, only the timer is rescheduled.
+    func updateInterval(_ seconds: TimeInterval) {
+        guard seconds.isFinite, seconds > 0, seconds != interval, timer != nil else { return }
+        interval = seconds
+        timer?.setEventHandler {}
+        timer?.cancel()
+        timer = nil
+        spawnTimer()
     }
 
     func stop() {
@@ -44,6 +47,26 @@ final class MetricsSampler {
         timer?.setEventHandler {}
         timer?.cancel()
         timer = nil
+        worker = nil
+        deliver = nil
+    }
+
+    private func spawnTimer() {
+        if worker == nil { worker = SamplingWorker(read: read, interfaces: interfaces) }
+        guard let worker else { return }
+        generation &+= 1
+        let token = generation
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(150))
+        timer.setEventHandler { [weak self] in
+            let result = worker.sample()
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == token, self.timer != nil else { return }
+                self.deliver?(result.0, result.1, result.2)
+            }
+        }
+        self.timer = timer
+        timer.resume()
     }
 
     deinit { timer?.cancel() }

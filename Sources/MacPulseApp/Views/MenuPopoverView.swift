@@ -5,6 +5,7 @@ struct MenuPopoverView: View {
     @ObservedObject var loginItem: LoginItem
     let onOpenCategory: (MetricCategory) -> Void
     let onOpenDashboard: () -> Void
+    let onOpenSettings: () -> Void
     let onQuit: () -> Void
 
     private var metrics: MetricsSnapshot? { store.snapshot }
@@ -64,6 +65,15 @@ struct MenuPopoverView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("开机启动")
             .accessibilityValue(loginItem.isEnabled ? "已开启" : "已关闭")
+
+            Button {
+                onOpenSettings()
+            } label: {
+                Label("设置…", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 2)
 
             Button(action: onOpenDashboard) {
                 Label("打开监控面板", systemImage: "rectangle.expand.vertical")

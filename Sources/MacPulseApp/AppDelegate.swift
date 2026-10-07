@@ -6,22 +6,28 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let store: MonitorStore
     private let loginItem = LoginItem()
+    private let settings: AppSettings
     private var statusItem: NSStatusItem!
-
-    init(historyFile: HistoryFileStore = .defaultStore()) {
-        store = MonitorStore(historyFile: historyFile)
-        super.init()
-    }
     private let popover = NSPopover()
     private var dashboardWindow: NSWindow?
+    private var settingsWindow: NSWindow?
     private var snapshotObserver: AnyCancellable?
+    private var settingsObservers: [AnyCancellable] = []
+
+    init(historyFile: HistoryFileStore = .defaultStore(), defaults: UserDefaults = .standard) {
+        store = MonitorStore(historyFile: historyFile)
+        settings = AppSettings(defaults: defaults)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSApp.appearance = settings.appearance.nsAppearance
         configureStatusItem()
         configurePopover()
         observeSnapshots()
-        store.start()
+        observeSettings()
+        store.start(interval: settings.updateInterval)
         // Launching the app is an explicit user action: show the dashboard
         // instead of sitting hidden in the menu bar.
         openDashboard()
@@ -72,6 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let dashboard = NSMenuItem(title: "打开主面板", action: #selector(openDashboardFromMenu), keyEquivalent: "")
         dashboard.target = self
         menu.addItem(dashboard)
+        let settingsItem = NSMenuItem(title: "设置…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         let launchAtLogin = NSMenuItem(
             title: "开机启动",
             action: #selector(toggleLaunchAtLoginFromMenu),
@@ -98,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         openDashboard()
     }
 
+    @objc private func showSettingsFromMenu() {
+        showSettings()
+    }
+
     @objc private func quitFromMenu() {
         NSApp.terminate(nil)
     }
@@ -116,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     self?.openCategoryDashboard(category)
                 },
                 onOpenDashboard: { [weak self] in self?.openDashboard() },
+                onOpenSettings: { [weak self] in self?.showSettings() },
                 onQuit: { NSApp.terminate(nil) }
             )
         )
@@ -133,10 +147,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshot in
                 guard let self else { return }
-                self.statusItem.button?.title = snapshot?.cpuPercent.map {
-                    "CPU \(MetricsFormatter.cpuPercent($0))"
-                } ?? "CPU —"
+                self.refreshStatusBar(with: snapshot)
             }
+    }
+
+    private func refreshStatusBar(with snapshot: MetricsSnapshot?) {
+        guard let button = statusItem.button else { return }
+        switch settings.menuBarDisplay {
+        case .text:
+            button.image = nil
+            button.title = snapshot.map {
+                "CPU \(MetricsFormatter.cpuPercent($0.cpuPercent))"
+            } ?? "CPU —"
+        case .graph:
+            button.title = ""
+            button.image = Self.menuBarGraph(from: store.recentCPUPercents())
+        }
+    }
+
+    /// Renders recent CPU percentages as a template image so the menu bar
+    /// graph adapts to light/dark and highlighted states automatically.
+    private static func menuBarGraph(from values: [Double?]) -> NSImage? {
+        let present = values.compactMap { value -> Double? in
+            guard let value, value.isFinite else { return nil }
+            return min(max(value, 0), 100) / 100
+        }
+        guard present.count >= 2 else { return nil }
+        let tail = present.suffix(30)
+
+        let points = CGFloat(30)
+        let height = CGFloat(14)
+        let image = NSImage(size: NSSize(width: points, height: height))
+        image.lockFocus()
+        NSColor.black.setStroke()
+        NSColor.black.setFill()
+        let step = points / CGFloat(tail.count - 1)
+        let baseline = height - 1
+        let usable = height - 2
+        let path = NSBezierPath()
+        path.lineWidth = 1
+        path.move(to: NSPoint(x: 0, y: baseline - CGFloat(tail.first ?? 0) * usable))
+        for (index, value) in tail.enumerated().dropFirst() {
+            let x = CGFloat(index) * step
+            let y = baseline - CGFloat(value) * usable
+            path.line(to: NSPoint(x: x, y: y))
+        }
+        path.stroke()
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
+    }
+
+    private func observeSettings() {
+        settingsObservers = [
+            settings.$updateInterval.dropFirst().sink { [weak self] interval in
+                self?.store.setUpdateInterval(interval)
+            },
+            settings.$menuBarDisplay.dropFirst().sink { [weak self] _ in
+                guard let self else { return }
+                self.refreshStatusBar(with: self.store.snapshot)
+            },
+            settings.$appearance.dropFirst().sink { appearance in
+                NSApp.appearance = appearance.nsAppearance
+            }
+        ]
+    }
+
+    private func showSettings() {
+        popover.performClose(nil)
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let window = NSWindow(contentViewController: NSHostingController(
+            rootView: SettingsView(settings: settings, loginItem: loginItem)
+        ))
+        window.title = "MacPulse 设置"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        settingsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func togglePopover(_ sender: Any?) {

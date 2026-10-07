@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package app bundle
+        run: Scripts/package-app.sh
+
+      - name: Build DMG
+        run: Scripts/make-dmg.sh
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacPulse-${{ github.ref_name }}.dmg
+          path: dist/MacPulse.dmg
