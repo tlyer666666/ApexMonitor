@@ -11,7 +11,7 @@ struct MetricDetailView: View {
                 Button {
                     onBack()
                 } label: {
-                    Label("返回总览", systemImage: "chevron.left")
+                    Label(L10n.Details.backToOverview, systemImage: "chevron.left")
                 }
                 .keyboardShortcut(.cancelAction)
 
@@ -108,10 +108,10 @@ struct ProcessListHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             Text("#").frame(minWidth: 18, alignment: .leading)
-            Text("进程").font(.caption).foregroundStyle(.secondary)
+            Text(L10n.Details.processHeader).font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 12)
-            Text("内存").font(.caption).foregroundStyle(.secondary).frame(minWidth: 84, alignment: .trailing)
-            Text("CPU").font(.caption).foregroundStyle(.secondary).frame(minWidth: 56, alignment: .trailing)
+            Text(L10n.Details.memoryColumn).font(.caption).foregroundStyle(.secondary).frame(minWidth: 84, alignment: .trailing)
+            Text(L10n.Details.cpuColumn).font(.caption).foregroundStyle(.secondary).frame(minWidth: 56, alignment: .trailing)
         }
     }
 }
@@ -123,30 +123,30 @@ struct MemoryDetailView: View {
 
     var body: some View {
             VStack(alignment: .leading, spacing: 16) {
-                DetailCard(title: "内存用量") {
+                DetailCard(title: L10n.Details.memoryUsage) {
                     if let snapshot {
-                        PercentBar(label: "占用", percent: snapshot.memoryPercent, tint: .purple)
-                        MetricRow(title: "已用", symbol: "circle.fill", value: MetricsFormatter.bytes(snapshot.memoryUsedBytes), tint: .purple)
-                        MetricRow(title: "可用", symbol: "circle", value: availableBytes, tint: .purple)
-                        MetricRow(title: "总量", symbol: "memorychip", value: MetricsFormatter.bytes(snapshot.memoryTotalBytes), tint: .purple)
+                        PercentBar(label: L10n.Charts.occupancy, percent: snapshot.memoryPercent, tint: .purple)
+                        MetricRow(title: L10n.Details.used, symbol: "circle.fill", value: MetricsFormatter.bytes(snapshot.memoryUsedBytes), tint: .purple)
+                        MetricRow(title: L10n.Details.available, symbol: "circle", value: availableBytes, tint: .purple)
+                        MetricRow(title: L10n.Details.total, symbol: "memorychip", value: MetricsFormatter.bytes(snapshot.memoryTotalBytes), tint: .purple)
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                DetailCard(title: "进程占用 · Top 10（按内存）") {
+                DetailCard(title: L10n.Details.topProcessesByMemory) {
                     if let summary = store.processSummary, !summary.topByMemory.isEmpty {
                         ProcessListHeader()
                         ForEach(Array(summary.topByMemory.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
-                        Text("当前权限可读 \(summary.processCount) 个进程")
+                        Text(L10n.Details.readableCount(summary.processCount))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -171,14 +171,14 @@ struct DiskDetailView: View {
 
     var body: some View {
             VStack(alignment: .leading, spacing: 16) {
-                DetailCard(title: "读写速度") {
-                    MetricRow(title: "读取", symbol: "arrow.down.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.diskReadBytesPerSecond), tint: .orange)
-                    MetricRow(title: "写入", symbol: "arrow.up.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.diskWriteBytesPerSecond), tint: .orange)
+                DetailCard(title: L10n.Details.readSpeed) {
+                    MetricRow(title: L10n.Details.read, symbol: "arrow.down.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.diskReadBytesPerSecond), tint: .orange)
+                    MetricRow(title: L10n.Details.write, symbol: "arrow.up.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.diskWriteBytesPerSecond), tint: .orange)
                 }
 
-                DetailCard(title: "存储空间") {
+                DetailCard(title: L10n.Details.storage) {
                     if store.volumes.isEmpty {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     } else {
@@ -197,7 +197,7 @@ struct DiskDetailView: View {
                                     ProgressView(value: Double(volume.usedBytes) / Double(volume.totalBytes))
                                         .tint(.orange)
                                 }
-                                Text("可用 \(MetricsFormatter.bytes(volume.availableBytes as UInt64?))")
+                                Text("\(L10n.Details.availableSpace) \(MetricsFormatter.bytes(volume.availableBytes as UInt64?))")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -216,13 +216,13 @@ struct NetworkDetailView: View {
 
     var body: some View {
             VStack(alignment: .leading, spacing: 16) {
-                DetailCard(title: "实时流量") {
-                    MetricRow(title: "接收", symbol: "arrow.down.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkReceiveBytesPerSecond), tint: .green)
-                    MetricRow(title: "发送", symbol: "arrow.up.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkSendBytesPerSecond), tint: .green)
+                DetailCard(title: L10n.Details.liveTraffic) {
+                    MetricRow(title: L10n.Details.receive, symbol: "arrow.down.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkReceiveBytesPerSecond), tint: .green)
+                    MetricRow(title: L10n.Details.send, symbol: "arrow.up.circle", value: MetricsFormatter.bytesPerSecond(snapshot?.networkSendBytesPerSecond), tint: .green)
                 }
 
-                DetailCard(title: "流量统计") {
-                    Picker("统计时段", selection: $store.trafficRange) {
+                DetailCard(title: L10n.Details.trafficStats) {
+                    Picker(L10n.Details.statsWindow, selection: $store.trafficRange) {
                         ForEach(HistoryRange.allCases, id: \.self) { range in
                             Text(range.label).tag(range)
                         }
@@ -233,59 +233,59 @@ struct NetworkDetailView: View {
                     let series = store.series(for: store.trafficRange)
                     let stats = HistoryAnalyzer.trafficStatistics(series.trafficPoints, sampleSpacing: series.spacing)
                     if stats.hasLegacyGaps {
-                        Text("旧版历史缺少有效时长，以下总量仅包含可核算的新样本；旧数据未删除。")
+                        Text(L10n.Details.legacyNote)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     if stats.isEstimated {
-                        Text("部分历史或边界分钟的总量、峰值为估算；未知时长不补齐。")
+                        Text(L10n.Details.estimatedNote)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     MetricRow(
-                        title: "统计覆盖",
+                        title: L10n.Details.coverage,
                         symbol: "clock",
                         value: MetricsFormatter.duration(stats.coverageSeconds),
-                        detail: "按有效采样时长累计；不补齐未监测时段",
+                        detail: L10n.Details.coverageNote,
                         tint: .green
                     )
                         MetricRow(
-                            title: "接收总量",
+                            title: L10n.Details.receiveTotal,
                             symbol: "arrow.down.circle",
                             value: MetricsFormatter.bytes(stats.receivedBytes),
                             detail: stats.isEstimated
-                                ? "峰值≈ \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))"
-                                : "峰值 \(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))",
+                                ? L10n.Details.peakEstimated(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond))
+                                : L10n.Details.peak(MetricsFormatter.bytesPerSecond(stats.receivePeakPerSecond)),
                             tint: .green
                         )
                         MetricRow(
-                            title: "发送总量",
+                            title: L10n.Details.sendTotal,
                             symbol: "arrow.up.circle",
                             value: MetricsFormatter.bytes(stats.sentBytes),
                             detail: stats.isEstimated
-                                ? "峰值≈ \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))"
-                                : "峰值 \(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))",
+                                ? L10n.Details.peakEstimated(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond))
+                                : L10n.Details.peak(MetricsFormatter.bytesPerSecond(stats.sendPeakPerSecond)),
                             tint: .green
                         )
                 }
 
-                DetailCard(title: "连接状态") {
+                DetailCard(title: L10n.Details.connectionStatus) {
                     if let status = store.pathStatus {
                         HStack(spacing: 8) {
                             Circle()
                                 .fill(status.online ? Color.green : Color.red)
                                 .frame(width: 9, height: 9)
-                            Text(status.online ? "在线 · \(status.interfaceType)" : "离线")
+                            Text(status.online ? "\(L10n.Details.online) · \(status.interfaceType)" : L10n.Details.offline)
                                 .font(.system(.body, design: .rounded).weight(.medium))
                         }
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                DetailCard(title: "接口明细") {
+                DetailCard(title: L10n.Details.interfaceDetails) {
                     if store.interfaces.isEmpty {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     } else {
@@ -313,7 +313,7 @@ struct InterfaceRow: View {
                     .frame(width: 8, height: 8)
                 Text(interface.name)
                     .font(.system(.callout, design: .rounded).weight(.semibold))
-                Text(interface.isConnected ? "已连接" : "未连接")
+                Text(interface.isConnected ? L10n.Details.connected : L10n.Details.disconnected)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -342,42 +342,42 @@ struct CPUDetailView: View {
 
     var body: some View {
             VStack(alignment: .leading, spacing: 16) {
-                DetailCard(title: "处理器分解") {
+                DetailCard(title: L10n.Details.cpuBreakdown) {
                     if let snapshot {
-                        PercentBar(label: "用户", percent: snapshot.cpuUserPercent, tint: .blue)
-                        PercentBar(label: "系统", percent: snapshot.cpuSystemPercent, tint: .blue)
-                        PercentBar(label: "友好", percent: snapshot.cpuNicePercent, tint: .blue)
-                        PercentBar(label: "空闲", percent: snapshot.cpuIdlePercent, tint: .gray)
+                        PercentBar(label: L10n.Details.user, percent: snapshot.cpuUserPercent, tint: .blue)
+                        PercentBar(label: L10n.Details.system, percent: snapshot.cpuSystemPercent, tint: .blue)
+                        PercentBar(label: L10n.Details.nice, percent: snapshot.cpuNicePercent, tint: .blue)
+                        PercentBar(label: L10n.Details.idle, percent: snapshot.cpuIdlePercent, tint: .gray)
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                DetailCard(title: "负载均值") {
+                DetailCard(title: L10n.Details.loadAverage) {
                     if let load = store.loadAverage {
-                        MetricRow(title: "1 分钟", symbol: "gauge", value: String(format: "%.2f", load.one), tint: .blue)
-                        MetricRow(title: "5 分钟", symbol: "gauge", value: String(format: "%.2f", load.five), tint: .blue)
-                        MetricRow(title: "15 分钟", symbol: "gauge", value: String(format: "%.2f", load.fifteen), tint: .blue)
+                        MetricRow(title: L10n.Details.minutes(1), symbol: "gauge", value: String(format: "%.2f", load.one), tint: .blue)
+                        MetricRow(title: L10n.Details.minutes(5), symbol: "gauge", value: String(format: "%.2f", load.five), tint: .blue)
+                        MetricRow(title: L10n.Details.minutes(15), symbol: "gauge", value: String(format: "%.2f", load.fifteen), tint: .blue)
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                DetailCard(title: "进程占用 · Top 10（按 CPU）") {
+                DetailCard(title: L10n.Details.topProcessesByCPU) {
                     if let summary = store.processSummary, !summary.topByCPU.isEmpty {
                         ProcessListHeader()
                         ForEach(Array(summary.topByCPU.enumerated()), id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
-                        Text("当前权限可读 \(summary.processCount) 个进程 · CPU% 以单核 100% 为基准")
+                        Text(L10n.Details.readableCount(summary.processCount) + " · " + L10n.Details.singleCoreNote)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     } else {
-                        Text("采集中…")
+                        Text(L10n.Details.collecting)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }

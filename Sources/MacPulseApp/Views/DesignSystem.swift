@@ -90,7 +90,7 @@ struct HoverableCard<Content: View>: View {
 
 /// Standard empty state for charts and lists that are still collecting data.
 struct CollectingPlaceholder: View {
-    var text: String = "正在建立基线…"
+    var text: String = L10n.Charts.establishingBaseline
 
     var body: some View {
         VStack(spacing: 6) {

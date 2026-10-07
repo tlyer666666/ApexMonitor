@@ -107,8 +107,8 @@ struct HistoryChartCard: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if let primary = stats.first {
-                    StatChip(label: "平均", value: metrics[0].formatter(primary.average))
-                    StatChip(label: primary.isEstimated ? "峰值≈" : "峰值", value: metrics[0].formatter(primary.peak))
+                    StatChip(label: L10n.Charts.average, value: metrics[0].formatter(primary.average))
+                    StatChip(label: primary.isEstimated ? L10n.Charts.peakEstimated : L10n.Charts.peak, value: metrics[0].formatter(primary.peak))
                 }
             }
 
@@ -120,7 +120,7 @@ struct HistoryChartCard: View {
             .frame(height: DesignSystem.Chart.height)
             .overlay {
                 if points.allSatisfy({ $0[keyPath: metrics[0].keyPath] == nil }) {
-                    CollectingPlaceholder(text: "正在建立基线…")
+                    CollectingPlaceholder(text: L10n.Charts.establishingBaseline)
                 }
             }
 

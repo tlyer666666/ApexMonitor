@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         button.title = "CPU —"
         button.imagePosition = .noImage
-        button.toolTip = "MacPulse 系统性能（左键弹层 · 右键菜单）"
+        button.toolTip = L10n.tr("MacPulse 系统性能（左键弹层 · 右键菜单）", "MacPulse (left-click popover · right-click menu)")
         button.target = self
         button.action = #selector(statusItemClicked(_:))
         // Deliver right-clicks to the action so a context menu can be shown.
@@ -75,14 +75,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.performClose(nil)
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let dashboard = NSMenuItem(title: "打开主面板", action: #selector(openDashboardFromMenu), keyEquivalent: "")
+        let dashboard = NSMenuItem(title: L10n.ContextMenu.openDashboard, action: #selector(openDashboardFromMenu), keyEquivalent: "")
         dashboard.target = self
         menu.addItem(dashboard)
-        let settingsItem = NSMenuItem(title: "设置…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.MenuBar.settings, action: #selector(showSettingsFromMenu), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
         let launchAtLogin = NSMenuItem(
-            title: "开机启动",
+            title: L10n.MenuBar.launchAtLogin,
             action: #selector(toggleLaunchAtLoginFromMenu),
             keyEquivalent: ""
         )
@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         launchAtLogin.state = loginItem.isEnabled ? .on : .off
         menu.addItem(launchAtLogin)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 MacPulse", action: #selector(quitFromMenu), keyEquivalent: "q")
+        let quit = NSMenuItem(title: L10n.MenuBar.quit, action: #selector(quitFromMenu), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -223,7 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let window = NSWindow(contentViewController: NSHostingController(
             rootView: SettingsView(settings: settings, loginItem: loginItem)
         ))
-        window.title = "MacPulse 设置"
+        window.title = L10n.Settings.windowTitle
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.center()
@@ -252,7 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let hostingController = NSHostingController(rootView: DashboardView(store: store))
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "MacPulse · 系统性能"
+        window.title = "MacPulse · \(L10n.Dashboard.title)"
         window.setContentSize(NSSize(width: 800, height: 700))
         window.minSize = NSSize(width: 780, height: 680)
         window.center()

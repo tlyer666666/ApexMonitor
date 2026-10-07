@@ -8,8 +8,8 @@ enum MenuBarDisplay: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .text: return "文本"
-        case .graph: return "迷你图"
+        case .text: return L10n.tr("文本", "Text")
+        case .graph: return L10n.tr("迷你图", "Mini Graph")
         }
     }
 }
@@ -21,9 +21,9 @@ enum AppAppearance: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .system: return "跟随系统"
-        case .light: return "浅色"
-        case .dark: return "深色"
+        case .system: return L10n.tr("跟随系统", "Match System")
+        case .light: return L10n.tr("浅色", "Light")
+        case .dark: return L10n.tr("深色", "Dark")
         }
     }
 
@@ -50,12 +50,19 @@ final class AppSettings: ObservableObject {
     @Published var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: Self.appearanceKey) }
     }
+    @Published var appLanguage: AppLanguage {
+        didSet {
+            defaults.set(appLanguage.rawValue, forKey: Self.appLanguageKey)
+            L10n.override = appLanguage
+        }
+    }
 
     private let defaults: UserDefaults
 
     static let updateIntervalKey = "updateInterval"
     static let menuBarDisplayKey = "menuBarDisplay"
     static let appearanceKey = "appearance"
+    static let appLanguageKey = "appLanguage"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -63,5 +70,7 @@ final class AppSettings: ObservableObject {
         updateInterval = [1.0, 2.0, 5.0].contains(storedInterval) ? storedInterval : 1.0
         menuBarDisplay = MenuBarDisplay(rawValue: defaults.string(forKey: Self.menuBarDisplayKey) ?? "") ?? .text
         appearance = AppAppearance(rawValue: defaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
+        appLanguage = AppLanguage(rawValue: defaults.string(forKey: Self.appLanguageKey) ?? "") ?? .system
+        L10n.override = appLanguage
     }
 }
