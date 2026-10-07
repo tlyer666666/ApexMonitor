@@ -5,12 +5,13 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let store: MonitorStore
+    private let loginItem = LoginItem()
+    private var statusItem: NSStatusItem!
 
     init(historyFile: HistoryFileStore = .defaultStore()) {
         store = MonitorStore(historyFile: historyFile)
         super.init()
     }
-    private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var dashboardWindow: NSWindow?
     private var snapshotObserver: AnyCancellable?
@@ -71,6 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let dashboard = NSMenuItem(title: "打开主面板", action: #selector(openDashboardFromMenu), keyEquivalent: "")
         dashboard.target = self
         menu.addItem(dashboard)
+        let launchAtLogin = NSMenuItem(
+            title: "开机启动",
+            action: #selector(toggleLaunchAtLoginFromMenu),
+            keyEquivalent: ""
+        )
+        launchAtLogin.target = self
+        launchAtLogin.state = loginItem.isEnabled ? .on : .off
+        menu.addItem(launchAtLogin)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "退出 MacPulse", action: #selector(quitFromMenu), keyEquivalent: "q")
         quit.target = self
@@ -79,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
+    }
+
+    @objc private func toggleLaunchAtLoginFromMenu() {
+        loginItem.setEnabled(!loginItem.isEnabled)
     }
 
     @objc private func openDashboardFromMenu() {
@@ -98,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = NSHostingController(
             rootView: MenuPopoverView(
                 store: store,
+                loginItem: loginItem,
                 onOpenCategory: { [weak self] category in
                     self?.openCategoryDashboard(category)
                 },

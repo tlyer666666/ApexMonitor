@@ -1,0 +1,27 @@
+# SwiftLint configuration for MacPulse.
+# Rules marked `opt_in` mirror mainstream macOS projects; tighten gradually.
+
+included:
+  - Sources
+  - Tests
+
+line_length:
+  warning: 160
+  error: 200
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - x
+    - y
+    - s
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - first_where
+  - sorted_first_where
+
+disabled_rules:
+  - trailing_whitespace
