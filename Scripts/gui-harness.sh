@@ -13,6 +13,8 @@ swiftc -D MACPULSE_INTEGRATION -warnings-as-errors -O -target arm64-apple-macos1
   -framework AppKit -framework SwiftUI -framework IOKit \
   Sources/MacPulseCore/*.swift \
   Sources/MacPulseApp/Monitoring/*.swift \
+  Sources/MacPulseApp/LaunchAtLogin.swift \
+  Sources/MacPulseApp/AppSettings.swift \
   Sources/MacPulseApp/Views/*.swift \
   Sources/MacPulseApp/AppDelegate.swift \
   Tests/MacPulseIntegrationTests/GUIHarness.swift \
