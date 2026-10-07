@@ -25,14 +25,14 @@ public enum MetricsFormatter {
     }
 
     public static func duration(_ seconds: Double?) -> String {
-        guard let seconds, seconds.isFinite, seconds >= 0 else { return "—" }
-        if seconds < 60 { return "\(Int(seconds.rounded())) 秒" }
-        if seconds < 3_600 { return "\(Int((seconds / 60).rounded())) 分钟" }
-        return String(format: "%.1f 小时", seconds / 3_600)
+        guard let seconds, seconds.isFinite, seconds >= 0 else { return L10n.Formatter.unavailable }
+        if seconds < 60 { return "\(Int(seconds.rounded())) \(L10n.Formatter.seconds)" }
+        if seconds < 3_600 { return "\(Int((seconds / 60).rounded())) \(L10n.Formatter.minutes)" }
+        return String(format: "%.1f \(L10n.Formatter.hours)", seconds / 3_600)
     }
 
     public static func memorySummary(usedBytes: UInt64?, totalBytes: UInt64?) -> String {
-        guard let usedBytes, let totalBytes else { return "物理内存" }
+        guard let usedBytes, let totalBytes else { return L10n.Formatter.memoryFallback }
         return "\(bytes(usedBytes)) / \(bytes(totalBytes))"
     }
 

@@ -16,7 +16,7 @@ struct MenuPopoverView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("MacPulse")
                         .font(.system(.title3, design: .rounded).weight(.bold))
-                    Text("系统实时状态 · 点击分类查看详情")
+                    Text(L10n.MenuBar.popoverSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -46,7 +46,7 @@ struct MenuPopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(category.title)详情")
+                .accessibilityLabel(L10n.Dashboard.detailNavigation(category.title))
                 .accessibilityValue(rowValue(category))
             }
 
@@ -56,34 +56,34 @@ struct MenuPopoverView: View {
                 loginItem.setEnabled(!loginItem.isEnabled)
             } label: {
                 Label(
-                    loginItem.isEnabled ? "开机启动 · 已开启" : "开机启动 · 已关闭",
+                    loginItem.isEnabled ? L10n.MenuBar.launchAtLoginOn : L10n.MenuBar.launchAtLoginOff,
                     systemImage: loginItem.isEnabled ? "checkmark.circle.fill" : "powerplug"
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(loginItem.isEnabled ? Color.accentColor : .secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("开机启动")
-            .accessibilityValue(loginItem.isEnabled ? "已开启" : "已关闭")
+            .accessibilityLabel(L10n.MenuBar.launchAtLogin)
+            .accessibilityValue(loginItem.isEnabled ? L10n.MenuBar.enabled : L10n.MenuBar.disabled)
 
             Button {
                 onOpenSettings()
             } label: {
-                Label("设置…", systemImage: "gearshape")
+                Label(L10n.MenuBar.settings, systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .padding(.bottom, 2)
 
             Button(action: onOpenDashboard) {
-                Label("打开监控面板", systemImage: "rectangle.expand.vertical")
+                Label(L10n.MenuBar.openDashboard, systemImage: "rectangle.expand.vertical")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
             .padding(.vertical, 5)
 
             Button(action: onQuit) {
-                Label("退出 MacPulse", systemImage: "power")
+                Label(L10n.MenuBar.quit, systemImage: "power")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .foregroundStyle(.secondary)
             }
@@ -119,18 +119,18 @@ struct MenuPopoverView: View {
     private func rowDetail(_ category: MetricCategory) -> String {
         switch category {
         case .cpu:
-            return metrics?.cpuPercent == nil ? "等待下一次有效采样" : "总使用率 · 最近 5 分钟"
+            return metrics?.cpuPercent == nil ? L10n.MenuBar.waitingForFirstSample : L10n.MenuBar.trendSuffix
         case .memory:
             return memoryDetail
         case .disk:
-            return "读取 / 写入"
+            return L10n.MenuBar.readWrite
         case .network:
-            return "接收 / 发送"
+            return L10n.MenuBar.receiveSend
         }
     }
 
     private var memoryDetail: String {
-        guard let metrics else { return "物理内存" }
+        guard let metrics else { return L10n.Formatter.memoryFallback }
         return MetricsFormatter.memorySummary(usedBytes: metrics.memoryUsedBytes, totalBytes: metrics.memoryTotalBytes)
     }
 }

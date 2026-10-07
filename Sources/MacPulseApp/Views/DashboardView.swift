@@ -32,9 +32,9 @@ struct DashboardView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("系统性能")
+                Text(L10n.Dashboard.title)
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                Text("MacPulse · 实时监控与历史统计")
+                Text(L10n.Dashboard.subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -42,7 +42,7 @@ struct DashboardView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 HStack(spacing: 5) {
                     Circle().fill(.green).frame(width: 7, height: 7)
-                    Text("每秒更新")
+                    Text(L10n.Dashboard.updating)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -51,7 +51,7 @@ struct DashboardView: View {
                         .font(.system(.caption2, design: .rounded).monospacedDigit())
                         .foregroundStyle(lastUpdateStale ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
                 }
-                Text("历史数据仅保存在本机")
+                Text(L10n.Dashboard.localOnlyNote)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -61,7 +61,7 @@ struct DashboardView: View {
     private var lastUpdateAge: String? {
         guard let date = store.lastUpdateDate else { return nil }
         let age = Int(Date().timeIntervalSince(date))
-        return age < 2 ? "刚刚更新" : "最后更新 \(age) 秒前"
+        return age < 2 ? L10n.Dashboard.justUpdated : L10n.Dashboard.updatedAgo(age)
     }
 
     private var lastUpdateStale: Bool {
@@ -71,7 +71,7 @@ struct DashboardView: View {
 
     private var rangePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("时间范围", selection: $store.selectedRange) {
+            Picker(L10n.Dashboard.rangePicker, selection: $store.selectedRange) {
                 ForEach(HistoryRange.allCases, id: \.self) { range in
                     Text(range.label).tag(range)
                 }
@@ -96,7 +96,7 @@ struct DashboardView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(category.title)详情")
+                .accessibilityLabel(L10n.Dashboard.detailNavigation(category.title))
                 .accessibilityValue(category.currentValue(metrics))
             }
         }
@@ -117,14 +117,14 @@ struct DashboardView: View {
 
     private func chartGrid(_ points: [MetricPoint]) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-            chartCard(.cpu, points: points, metric: ("使用率", \.cpu, MetricsFormatter.percent), secondary: nil)
-            chartCard(.memory, points: points, metric: ("占用", \.memory, MetricsFormatter.percent), secondary: nil)
+            chartCard(.cpu, points: points, metric: (L10n.Charts.usage, \.cpu, MetricsFormatter.percent), secondary: nil)
+            chartCard(.memory, points: points, metric: (L10n.Charts.occupancy, \.memory, MetricsFormatter.percent), secondary: nil)
             chartCard(.disk, points: points,
-                      metric: ("读取", \.diskRead, MetricsFormatter.bytesPerSecond),
-                      secondary: ("写入", \.diskWrite, MetricsFormatter.bytesPerSecond))
+                      metric: (L10n.Details.read, \.diskRead, MetricsFormatter.bytesPerSecond),
+                      secondary: (L10n.Details.write, \.diskWrite, MetricsFormatter.bytesPerSecond))
             chartCard(.network, points: points,
-                      metric: ("接收", \.networkReceive, MetricsFormatter.bytesPerSecond),
-                      secondary: ("发送", \.networkSend, MetricsFormatter.bytesPerSecond))
+                      metric: (L10n.Details.receive, \.networkReceive, MetricsFormatter.bytesPerSecond),
+                      secondary: (L10n.Details.send, \.networkSend, MetricsFormatter.bytesPerSecond))
         }
     }
 
@@ -143,7 +143,7 @@ struct DashboardView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("当前范围：\(store.selectedRange.label) · 历史分钟均值与本次运行明细 · 保留 7 天")
+            Text(String(format: L10n.Dashboard.footer, store.selectedRange.label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let error = store.historyError {
@@ -156,7 +156,7 @@ struct DashboardView: View {
     private var memoryDetail: String {
         guard let metrics,
               let used = metrics.memoryUsedBytes,
-              let total = metrics.memoryTotalBytes else { return "物理内存" }
+              let total = metrics.memoryTotalBytes else { return L10n.Formatter.memoryFallback }
         return MetricsFormatter.memorySummary(usedBytes: used, totalBytes: total)
     }
 }

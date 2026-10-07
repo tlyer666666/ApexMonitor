@@ -8,10 +8,10 @@ enum MetricCategory: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .cpu: return "处理器"
-        case .memory: return "内存"
-        case .disk: return "磁盘"
-        case .network: return "网络"
+        case .cpu: return L10n.tr("处理器", "CPU")
+        case .memory: return L10n.tr("内存", "Memory")
+        case .disk: return L10n.tr("磁盘", "Disk")
+        case .network: return L10n.tr("网络", "Network")
         }
     }
 

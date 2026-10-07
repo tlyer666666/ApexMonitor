@@ -36,9 +36,10 @@ final class HistoryRepository: @unchecked Sendable {
         guard baseline == nil else { return }
         do {
             baseline = HistoryAnalyzer.mergedBuckets(try file.read())
+            loadError = nil
         } catch {
             baseline = []
-            loadError = "历史文件读取失败，原文件已保留；本次数据仅暂存在内存。"
+            loadError = L10n.Errors.historyLoadFailed
         }
     }
 
@@ -49,7 +50,7 @@ final class HistoryRepository: @unchecked Sendable {
         guard loadError == nil else {
             return HistoryRepositoryResult(buckets: buckets, error: loadError)
         }
-        let error = file.save(buckets) ? nil : "历史保存失败；本次数据仍在内存，下次保存将重试。"
+        let error = file.save(buckets) ? nil : L10n.Errors.historySaveFailed
         return HistoryRepositoryResult(buckets: buckets, error: error)
     }
 }

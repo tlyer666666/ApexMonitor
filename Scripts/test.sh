@@ -17,12 +17,14 @@ swiftc \
   Sources/MacPulseCore/HistoryPersistence.swift \
   Sources/MacPulseCore/HistoryValidation.swift \
   Sources/MacPulseCore/ProcessTable.swift \
+  Sources/MacPulseCore/Localization.swift \
   Tests/MacPulseCoreTests/TestMain.swift \
   Tests/MacPulseCoreTests/MetricsCalculatorTests.swift \
   Tests/MacPulseCoreTests/MetricsFormatterTests.swift \
   Tests/MacPulseCoreTests/MetricBoundaryTests.swift \
   Tests/MacPulseCoreTests/MetricsHistoryTests.swift \
   Tests/MacPulseCoreTests/ProcessTableTests.swift \
+  Tests/MacPulseCoreTests/L10nTests.swift \
   Tests/MacPulseCoreTests/main.swift \
   -o "$OUTPUT"
 "$OUTPUT"

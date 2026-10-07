@@ -291,12 +291,12 @@ public enum HistoryRange: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .fiveMinutes: return "5分钟"
-        case .fifteenMinutes: return "15分钟"
-        case .thirtyMinutes: return "30分钟"
-        case .oneHour: return "1小时"
-        case .oneDay: return "24小时"
-        case .oneWeek: return "7天"
+        case .fiveMinutes: return L10n.tr("5分钟", "5 min")
+        case .fifteenMinutes: return L10n.tr("15分钟", "15 min")
+        case .thirtyMinutes: return L10n.tr("30分钟", "30 min")
+        case .oneHour: return L10n.tr("1小时", "1 hr")
+        case .oneDay: return L10n.tr("24小时", "24 h")
+        case .oneWeek: return L10n.tr("7天", "7 d")
         }
     }
 }
