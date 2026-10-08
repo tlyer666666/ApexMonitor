@@ -70,7 +70,7 @@ final class AppSettings: ObservableObject {
         updateInterval = [1.0, 2.0, 5.0].contains(storedInterval) ? storedInterval : 1.0
         menuBarDisplay = MenuBarDisplay(rawValue: defaults.string(forKey: Self.menuBarDisplayKey) ?? "") ?? .text
         appearance = AppAppearance(rawValue: defaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
-        appLanguage = AppLanguage(rawValue: defaults.string(forKey: Self.appLanguageKey) ?? "") ?? .system
+        appLanguage = AppLanguage.stored(defaults.string(forKey: Self.appLanguageKey))
         L10n.override = appLanguage
     }
 }

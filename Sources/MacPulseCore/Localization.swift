@@ -1,30 +1,42 @@
 import Foundation
 
-/// App language selection. `system` follows the user's macOS preference.
+/// App language selection. Chinese is the default; `system` is an explicit
+/// opt-in that follows the user's macOS preference.
 public enum AppLanguage: String, CaseIterable, Sendable {
-    case system
     case zhHans = "zh-Hans"
     case en = "en"
+    case system
 
     public var label: String {
         switch self {
-        case .system: return L10n.tr("跟随系统", "Follow System")
         case .zhHans: return "简体中文"
         case .en: return "English"
+        case .system: return L10n.tr("跟随系统", "Follow System")
         }
+    }
+
+    /// Decodes a persisted preference; anything missing or unreadable falls
+    /// back to Simplified Chinese so the app is Chinese out of the box.
+    public static func stored(_ rawValue: String?) -> AppLanguage {
+        guard let rawValue, let language = AppLanguage(rawValue: rawValue) else { return .zhHans }
+        return language
     }
 }
 
-/// Bilingual string catalog. The app is Chinese-first; English exists so the
-/// GitHub release is usable by international users. `override` is persisted
-/// in UserDefaults by the settings window; `nil` follows the system.
+/// Bilingual string catalog, Chinese-first: the app defaults to Simplified
+/// Chinese regardless of the system language; English and Follow System are
+/// explicit choices in Settings. `override` is persisted in UserDefaults.
 public enum L10n {
     public nonisolated(unsafe) static var override: AppLanguage?
 
     public static var language: AppLanguage {
-        if let override { return override }
-        let preferred = Locale.preferredLanguages.first ?? "en"
-        return preferred.hasPrefix("zh") ? .zhHans : .en
+        switch override {
+        case .zhHans: return .zhHans
+        case .en: return .en
+        case .system, nil:
+            let preferred = Locale.preferredLanguages.first ?? "en"
+            return preferred.hasPrefix("zh") ? .zhHans : .en
+        }
     }
 
     public static func tr(_ zh: String, _ en: String) -> String {

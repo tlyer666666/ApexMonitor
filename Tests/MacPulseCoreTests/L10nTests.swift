@@ -8,6 +8,23 @@ func testL10nFollowsExplicitOverride() {
     L10n.override = nil
 }
 
+func testSystemOverrideResolvesInsteadOfFallingBackToEnglish() {
+    L10n.override = nil
+    let resolved = L10n.language
+    L10n.override = .system
+    expect(L10n.language == resolved,
+           "explicit .system resolves exactly like the default, not falling through to English")
+    L10n.override = nil
+}
+
+func testMissingStoredPreferenceDefaultsToChinese() {
+    expect(AppLanguage.stored(nil) == .zhHans, "no stored preference defaults to Simplified Chinese")
+    expect(AppLanguage.stored("garbage") == .zhHans, "an unreadable stored preference defaults to Simplified Chinese")
+    expect(AppLanguage.stored("en") == .en, "a stored English preference is honored")
+    expect(AppLanguage.stored("zh-Hans") == .zhHans, "a stored Chinese preference is honored")
+    expect(AppLanguage.stored("system") == .system, "a stored follow-system preference is honored")
+}
+
 func testL10nFormatterStringsAreLocalized() {
     L10n.override = .en
     expect(L10n.Formatter.unavailable == "—", "unavailable marker is shared across languages")
@@ -24,6 +41,8 @@ func testHistoryValidationErrorIsLocalized() {
 
 func runL10nTests() {
     testL10nFollowsExplicitOverride()
+    testSystemOverrideResolvesInsteadOfFallingBackToEnglish()
+    testMissingStoredPreferenceDefaultsToChinese()
     testL10nFormatterStringsAreLocalized()
     testHistoryValidationErrorIsLocalized()
 }
