@@ -56,3 +56,22 @@ with tempfile.TemporaryDirectory(prefix="macpulse-install-test-") as directory:
         assert (home / "Desktop/MacPulse").resolve() == (home / "Applications/MacPulse.app").resolve()
         assert os.access(home / "Applications/MacPulse.app/Contents/MacOS/MacPulse", os.X_OK)
     print("PASS: fresh installation and repeat update preserve the shortcut")
+
+    home = temporary / "failed-link-restores-previous"
+    (home / "Desktop").mkdir(parents=True)
+    previous = home / "Applications/MacPulse.app"
+    bundle(previous)
+    (previous / "previous-marker").write_text("previous install")
+    (project / "dist/MacPulse.app/next-marker").write_text("new build")
+    desktop = home / "Desktop"
+    desktop.chmod(0o555)
+    try:
+        result = run(home)
+    finally:
+        desktop.chmod(0o755)
+    assert result.returncode != 0, "the installer must fail when the shortcut cannot be created"
+    assert (previous / "previous-marker").is_file(), "a failed install must restore the previous version"
+    assert not (previous / "next-marker").exists(), "the failed build must not remain at the destination"
+    assert not list((home / "Applications").glob(".macpulse-install.*")), "cleanup must remove the staging directory"
+    assert not (home / "Desktop/MacPulse").is_symlink()
+    print("PASS: a failed desktop-link step restores the previous install")

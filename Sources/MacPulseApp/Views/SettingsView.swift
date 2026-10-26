@@ -43,15 +43,16 @@ struct SettingsView: View {
                     get: { loginItem.isEnabled },
                     set: { loginItem.setEnabled($0) }
                 ))
-
-                Picker(L10n.Settings.language, selection: $settings.appLanguage) {
-                    ForEach(AppLanguage.allCases, id: \.self) { language in
-                        Text(language.label).tag(language)
-                    }
+                if loginItem.status == .requiresApproval {
+                    Text(L10n.MenuBar.launchAtLoginApprovalNote)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
-                Text(L10n.Settings.languageNote)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let error = loginItem.lastError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .formStyle(.grouped)

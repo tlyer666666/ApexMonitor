@@ -172,8 +172,46 @@ func testLongSamplingGapRebaselinesInsteadOfReportingOldActivity() {
     expectNear(next.networkReceiveBytesPerSecond, 100, "sampling resumes normally after a gap")
 }
 
+func testFiveSecondCadenceAcceptsSchedulerJitter() {
+    func sample(_ time: Double, _ count: UInt64) -> RawMetricsSample {
+        .init(uptime: time, cpu: .init(user: count, system: 0, idle: count, nice: 0),
+              memoryUsedBytes: 1, memoryTotalBytes: 2, diskReadBytes: count,
+              diskWrittenBytes: count, networkReceivedBytes: count, networkSentBytes: count)
+    }
+    var calculator = MetricsCalculator()
+    calculator.setMaxValidInterval(SamplingValidity.maxValidInterval(forConfiguredInterval: 5))
+    _ = calculator.update(sample(100, 100))
+    let jittered = calculator.update(sample(105.001, 600))
+    expectNear(jittered.cpuPercent, 50, "a five-second cadence survives normal scheduler jitter")
+    expectNear(jittered.diskReadBytesPerSecond, 500 / 5.001, "a jittered five-second interval still yields a disk rate")
+    expectNear(jittered.networkReceiveBytesPerSecond, 500 / 5.001, "a jittered five-second interval still yields a network rate")
+}
+
+func testSamplingValidityPolicyKeepsCadenceAndSleepBounds() {
+    expect(SamplingValidity.maxValidInterval(forConfiguredInterval: 1) == 5,
+           "one-second cadence keeps the historical five-second bound")
+    expect(SamplingValidity.maxValidInterval(forConfiguredInterval: 2) == 5,
+           "two-second cadence keeps the historical five-second bound")
+    expect(SamplingValidity.maxValidInterval(forConfiguredInterval: 5) == 10,
+           "five-second cadence allows its own jitter window")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: 5.001, configuredInterval: 5) == false,
+           "5.001 seconds between samples is jitter, not a gap, at the five-second cadence")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: 5.001, configuredInterval: 1) == true,
+           "5.001 seconds is still a gap at the one-second cadence")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: -1, configuredInterval: 5) == true,
+           "a backwards wall clock is a sampling gap")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: 3_600, configuredInterval: 5) == true,
+           "a sleep-length gap is a sampling gap")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: 0, configuredInterval: 5) == false,
+           "zero wall delta is not a gap")
+    expect(SamplingValidity.isSamplingGap(wallSeconds: .nan, configuredInterval: 5) == true,
+           "a non-finite wall delta is a sampling gap")
+}
+
 func runMetricsCalculatorTests() {
     testLongSamplingGapRebaselinesInsteadOfReportingOldActivity()
+    testFiveSecondCadenceAcceptsSchedulerJitter()
+    testSamplingValidityPolicyKeepsCadenceAndSleepBounds()
     testCalculatesCPUAndByteRatesFromCounterDeltas()
     testMultiCoreCPUIsNormalizedToTotalProcessorCapacity()
     testFirstSampleAndCounterResetDoNotInventRates()

@@ -32,10 +32,26 @@ plutil -lint "$SOURCE/Contents/Info.plist"
 mkdir -p "$INSTALL_DIR" "$DESKTOP_DIR"
 STAGING="$(mktemp -d "$INSTALL_DIR/.macpulse-install.XXXXXX")"
 BACKUP="$STAGING/previous.app"
+SWAPPED=0
+COMMITTED=0
+# The install commits when the desktop shortcut exists. Any earlier failure
+# rolls the destination back to the backup, so a failed run never leaves a
+# half-updated install nor destroys the previous version.
 cleanup() {
     local status=$?
-    if [[ ! -e "$DESTINATION" && -d "$BACKUP" ]]; then
-        mv "$BACKUP" "$DESTINATION"
+    if (( status != 0 && COMMITTED == 0 )) && [[ -d "$BACKUP" ]]; then
+        if [[ -e "$DESTINATION" || -L "$DESTINATION" ]]; then
+            rm -rf "$DESTINATION"
+        fi
+        if mv "$BACKUP" "$DESTINATION"; then
+            printf 'error: install failed; previous version restored\n' >&2
+        else
+            printf 'error: install failed; could not restore; previous version kept at %s\n' "$BACKUP" >&2
+            exit "$status"
+        fi
+    elif (( status != 0 && COMMITTED == 0 && SWAPPED == 1 )); then
+        # No previous install to restore: remove the partial new app.
+        rm -rf "$DESTINATION"
     fi
     rm -rf "$STAGING"
     exit "$status"
@@ -46,8 +62,13 @@ plutil -lint "$STAGING/$APP_NAME.app/Contents/Info.plist"
 if [[ -d "$DESTINATION" ]]; then
     mv "$DESTINATION" "$BACKUP"
 fi
-mv "$STAGING/$APP_NAME.app" "$DESTINATION"
-if [[ ! -L "$DESKTOP_LINK" ]]; then
-    ln -s "$DESTINATION" "$DESKTOP_LINK"
+if mv "$STAGING/$APP_NAME.app" "$DESTINATION"; then
+    SWAPPED=1
+fi
+if (( SWAPPED == 1 )); then
+    if [[ ! -L "$DESKTOP_LINK" ]]; then
+        ln -s "$DESTINATION" "$DESKTOP_LINK"
+    fi
+    COMMITTED=1
 fi
 printf 'Installed %s\nDesktop shortcut: %s\n' "$DESTINATION" "$DESKTOP_LINK"

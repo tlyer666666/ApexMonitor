@@ -450,6 +450,118 @@ func testCurrentBucketPreviewDoesNotConsumeOrDuplicateSamples() {
     expectNear(aggregator.currentBucket?.cpuAverage, 60, "preview follows the new minute after rollover")
 }
 
+func testHistoryMetadataCannotContradictTopLevelFields() throws {
+    var aggregator = MetricsAggregator()
+    _ = aggregator.append(makeSnapshot(cpu: 10), at: historyBase.addingTimeInterval(30))
+    let bucket = aggregator.flush(at: historyBase.addingTimeInterval(31))!
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+
+    func tampered(_ mutate: (inout [String: Any]) -> Void) throws -> HistoryFileStore {
+        var objects = try JSONSerialization.jsonObject(with: encoder.encode([bucket])) as! [[String: Any]]
+        mutate(&objects[0])
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macpulse-tamper-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = HistoryFileStore(directory: directory)
+        try JSONSerialization.data(withJSONObject: objects).write(to: store.fileURL)
+        return store
+    }
+
+    let inflatedSum = try tampered { objects in
+        var metadata = objects["metadata"] as! [String: Any]
+        var cpu = metadata["cpu"] as! [String: Any]
+        cpu["valueSum"] = 10_000.0
+        metadata["cpu"] = cpu
+        objects["metadata"] = metadata
+    }
+    expect(inflatedSum.load().isEmpty, "metadata contradicting the top-level averages is rejected on read")
+
+    let inflatedPeak = try tampered { objects in
+        var metadata = objects["metadata"] as! [String: Any]
+        var cpu = metadata["cpu"] as! [String: Any]
+        cpu["samplePeak"] = 10_000.0
+        metadata["cpu"] = cpu
+        objects["metadata"] = metadata
+    }
+    expect(inflatedPeak.load().isEmpty, "cpu sample peaks above 100 percent are rejected on read")
+}
+
+func testSaveRejectsHistoriesTheReaderWouldReject() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("macpulse-capacity-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = HistoryFileStore(directory: directory)
+    let now = Date()
+    func bucket(at index: Int) -> MinuteBucket {
+        MinuteBucket(
+            minuteStart: now.addingTimeInterval(TimeInterval(index * 60)), sampleCount: 1,
+            cpuAverage: 1, cpuPeak: 1, memoryAverage: nil, memoryPeak: nil,
+            diskReadAverage: nil, diskReadPeak: nil, diskWriteAverage: nil, diskWritePeak: nil,
+            networkReceiveAverage: nil, networkReceivePeak: nil, networkSendAverage: nil, networkSendPeak: nil
+        )
+    }
+    let limit = (0..<100_000).map(bucket)
+    expect(store.save(limit), "one hundred thousand buckets remain within the storage contract")
+    expect(store.load().count == 100_000, "the saved boundary file stays readable")
+
+    expect(!store.save(limit + [bucket(at: 100_000)]), "saving more buckets than the reader accepts is refused")
+    expect(store.load().count == 100_000, "a refused save leaves the previous file intact")
+
+    var invalid = bucket(at: 0)
+    invalid = MinuteBucket(
+        minuteStart: invalid.minuteStart, sampleCount: 1,
+        cpuAverage: 150, cpuPeak: 150, memoryAverage: nil, memoryPeak: nil,
+        diskReadAverage: nil, diskReadPeak: nil, diskWriteAverage: nil, diskWritePeak: nil,
+        networkReceiveAverage: nil, networkReceivePeak: nil, networkSendAverage: nil, networkSendPeak: nil
+    )
+    expect(!store.save([invalid]), "semantically invalid buckets are refused before any file is written")
+    expect(store.load().count == 100_000, "refused semantic writes leave the previous file intact")
+}
+
+func testRateGeometryKeepsRealSpeedVariation() {
+    let points = MemoryTrendGeometry.normalizedPoints(for: [1024, 100_000, 10_000_000], percentDomain: false)
+    expect(points.count == 3, "rate geometry keeps every sample")
+    expect((points.first?.y ?? 0) > (points.last?.y ?? 1) + 0.5,
+           "byte rates are not flattened by the percentage ceiling")
+    expect((points.last?.y ?? 1) < 0.01, "the peak rate reaches the top of the sparkline")
+    let percent = MemoryTrendGeometry.normalizedPoints(for: [150, 80], percentDomain: true)
+    expect(percent.allSatisfy { $0.y >= 0 && $0.y <= 1 }, "percent domain still clamps to the unit interval")
+}
+
+func testSeriesAfterClockRollbackMatchesReloadedSeries() {
+    let base = Date(timeIntervalSince1970: 1_800_000_000)
+    func snapshot(cpu: Double, receive: Double) -> MetricsSnapshot {
+        MetricsSnapshot(timestamp: 1, cpuPercent: cpu, memoryUsedBytes: 1, memoryTotalBytes: 2,
+                        memoryPercent: 50, diskReadBytesPerSecond: nil, diskWriteBytesPerSecond: nil,
+                        networkReceiveBytesPerSecond: receive, networkSendBytesPerSecond: nil,
+                        sampleDurationSeconds: 1)
+    }
+    var recorder = HistoryRecorder()
+    recorder.record(snapshot(cpu: 100, receive: 100), at: base.addingTimeInterval(90))
+    recorder.record(snapshot(cpu: 0, receive: 0), at: base.addingTimeInterval(10))
+    recorder.record(snapshot(cpu: 0, receive: 0), at: base.addingTimeInterval(70))
+    let now = base.addingTimeInterval(100)
+
+    let live = recorder.series(for: .fiveMinutes, now: now)
+    let liveStats = HistoryAnalyzer.statistics(live.points, metric: \.cpu)
+    let liveTraffic = HistoryAnalyzer.trafficStatistics(live.trafficPoints, sampleSpacing: live.spacing)
+    var reloaded = HistoryRecorder()
+    reloaded.restore(recorder.buckets(at: now), now: now)
+    let restored = reloaded.series(for: .fiveMinutes, now: now)
+    let restoredStats = HistoryAnalyzer.statistics(restored.points, metric: \.cpu)
+    let restoredTraffic = HistoryAnalyzer.trafficStatistics(restored.trafficPoints, sampleSpacing: restored.spacing)
+
+    expectNear(liveStats.average ?? -1, 100.0 / 3.0,
+               "rollback cannot silently drop pre-rollback samples from live statistics")
+    expect(liveStats.average == restoredStats.average,
+           "live and reloaded series agree on cpu statistics after a clock rollback")
+    expectNear(liveTraffic.receivedBytes ?? -1, 100, "live traffic totals conserve pre-rollback bytes")
+    expect(liveTraffic.receivedBytes == restoredTraffic.receivedBytes,
+           "live and reloaded series agree on traffic totals after a clock rollback")
+}
+
 func runMetricsHistoryTests() throws {
     testAggregatorEmitsBucketWhenMinuteRolls()
     testAggregatorFlushEmitsPartialBucketWithoutLosingData()
@@ -475,4 +587,8 @@ func runMetricsHistoryTests() throws {
     testWindowClippingMarksEstimatedButWholeObservedSpansAreExact()
     testFragmentMetadataMergeIsAssociativeForNonoverlappingSamples()
     testCurrentBucketPreviewDoesNotConsumeOrDuplicateSamples()
+    try testHistoryMetadataCannotContradictTopLevelFields()
+    try testSaveRejectsHistoriesTheReaderWouldReject()
+    testRateGeometryKeepsRealSpeedVariation()
+    testSeriesAfterClockRollbackMatchesReloadedSeries()
 }

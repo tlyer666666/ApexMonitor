@@ -18,15 +18,21 @@ struct HistoryRecorder {
     private(set) var recentSamples: [TimestampedSnapshot] = []
     private var aggregator = MetricsAggregator()
     private var previousDate: Date?
+    /// Minutes whose merged content includes fragments the current detail
+    /// stream cannot represent (restored history, or data flushed by a clock
+    /// rollback). They always keep their bucket representation in charts.
+    private var nonDetailMinutes: Set<Date> = []
 
     mutating func restore(_ buckets: [MinuteBucket], now: Date) {
         restored = canonical(buckets, now: now)
+        nonDetailMinutes.formUnion(restored.map(\.minuteStart))
     }
 
     @discardableResult
     mutating func record(_ snapshot: MetricsSnapshot, at date: Date) -> Bool {
         if let previousDate, date < previousDate {
             flush(at: previousDate)
+            if let flushed = sessionBuckets.last { nonDetailMinutes.insert(flushed.minuteStart) }
             recentSamples.removeAll(keepingCapacity: true)
         }
         previousDate = date
@@ -37,6 +43,9 @@ struct HistoryRecorder {
         guard let completed = aggregator.append(snapshot, at: date) else { return false }
         sessionBuckets = canonical(sessionBuckets + [completed], now: date)
         restored = canonical(restored, now: date)
+        nonDetailMinutes = nonDetailMinutes.filter {
+            $0 > date.addingTimeInterval(-HistoryAnalyzer.retentionSeconds)
+        }
         return true
     }
 
@@ -56,16 +65,21 @@ struct HistoryRecorder {
         guard range.seconds <= 3_600, let first = recentSamples.first else {
             return MetricSeries(points: minutePoints, trafficPoints: minutePoints, spacing: 60)
         }
-        // Keep restored/partial first minutes; replace only complete minutes
-        // covered by this runtime's detailed samples. Totals always use the
-        // canonical buckets, so a resolution switch cannot change byte counts.
         let detailStart = Date(timeIntervalSince1970:
             (first.date.timeIntervalSince1970 / 60).rounded(.down) * 60 + 60)
         let cutoff = now.addingTimeInterval(-range.seconds)
         let detail = recentSamples.filter { $0.date >= detailStart && $0.date > cutoff && $0.date <= now }
             .map { MetricPoint(date: $0.date, snapshot: $0.snapshot) }
-        let chart = minutePoints.filter { $0.date < detailStart } + detail
+            .filter { !nonDetailMinutes.contains(Self.minuteStart(of: $0.date)) }
+        // Replace a minute with per-second detail only when every fragment of
+        // that minute lives in the current detail stream; otherwise keep the
+        // canonical bucket so pre-rollback and restored data stay visible.
+        let chart = minutePoints.filter { $0.date < detailStart || nonDetailMinutes.contains($0.date) } + detail
         return MetricSeries(points: chart, trafficPoints: minutePoints, spacing: 60)
+    }
+
+    private static func minuteStart(of date: Date) -> Date {
+        Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
     }
 
     private func canonical(_ buckets: [MinuteBucket], now: Date) -> [MinuteBucket] {

@@ -456,16 +456,19 @@ public enum HistoryAnalyzer {
         )
     }
 
-    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {
-        guard maxPoints > 0, values.count > maxPoints else { return values }
-        let step = Double(values.count) / Double(maxPoints)
+    public static func downsampleIndices(count: Int, maxPoints: Int) -> [Int] {
+        guard maxPoints > 0, count > maxPoints else { return Array(0..<count) }
+        let step = Double(count) / Double(maxPoints)
         return (0..<maxPoints).map { index in
             // With a single slot prefer the newest; with >= 2 keep both ends.
-            let source = index == maxPoints - 1
-                ? values.count - 1
+            index == maxPoints - 1
+                ? count - 1
                 : Int((Double(index) * step).rounded(.down))
-            return values[source]
         }
+    }
+
+    public static func downsample(_ values: [Double?], maxPoints: Int) -> [Double?] {
+        downsampleIndices(count: values.count, maxPoints: maxPoints).map { values[$0] }
     }
 }
 

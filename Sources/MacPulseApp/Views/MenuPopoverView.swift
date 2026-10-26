@@ -37,7 +37,8 @@ struct MenuPopoverView: View {
                         popoverRow(category)
                         MiniSparkline(
                             values: store.series(for: .fiveMinutes).points.map { $0[keyPath: category.pointKeyPath] },
-                            tint: category.tint
+                            tint: category.tint,
+                            percentDomain: category == .cpu || category == .memory
                         )
                         .padding(.leading, 42)
                         .accessibilityHidden(true)
@@ -55,16 +56,18 @@ struct MenuPopoverView: View {
             Button {
                 loginItem.setEnabled(!loginItem.isEnabled)
             } label: {
-                Label(
-                    loginItem.isEnabled ? L10n.MenuBar.launchAtLoginOn : L10n.MenuBar.launchAtLoginOff,
-                    systemImage: loginItem.isEnabled ? "checkmark.circle.fill" : "powerplug"
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(loginItem.isEnabled ? Color.accentColor : .secondary)
+                Label(loginItem.label, systemImage: loginItem.symbol)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundStyle(loginItem.isEnabled ? Color.accentColor : .secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.MenuBar.launchAtLogin)
             .accessibilityValue(loginItem.isEnabled ? L10n.MenuBar.enabled : L10n.MenuBar.disabled)
+            if let error = loginItem.lastError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
 
             Button {
                 onOpenSettings()

@@ -11,8 +11,25 @@ public struct NormalizedPoint: Sendable, Equatable {
 }
 
 public enum MemoryTrendGeometry {
-    public static func normalizedPoints(for values: [Double]) -> [NormalizedPoint] {
+    /// Percent values map into a 0...100 domain. Rate values (bytes/second)
+    /// must pass `percentDomain: false`; the percentage ceiling would clip
+    /// ordinary traffic into a flat line.
+    public static func normalizedPoints(for values: [Double], percentDomain: Bool = true) -> [NormalizedPoint] {
         guard !values.isEmpty else { return [] }
+        if percentDomain {
+            return percentPoints(for: values)
+        }
+        let safeValues = values.map { ($0.isFinite && $0 >= 0) ? $0 : 0 }
+        let maximum = max(safeValues.max() ?? 0, 1)
+        return safeValues.enumerated().map { index, value in
+            NormalizedPoint(
+                x: safeValues.count == 1 ? 0.5 : Double(index) / Double(safeValues.count - 1),
+                y: 1 - value / maximum
+            )
+        }
+    }
+
+    private static func percentPoints(for values: [Double]) -> [NormalizedPoint] {
         let safeValues = values.map { min(max($0.isFinite ? $0 : 0, 0), 100) }
         let minimum = safeValues.min() ?? 0
         let maximum = safeValues.max() ?? minimum
