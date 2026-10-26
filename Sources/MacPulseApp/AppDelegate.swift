@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// to anchor an NSMenu under a status item that also uses a popover.
     private func showContextMenu() {
         popover.performClose(nil)
+        loginItem.refresh()
         let menu = NSMenu()
         menu.autoenablesItems = false
         let dashboard = NSMenuItem(title: L10n.ContextMenu.openDashboard, action: #selector(openDashboardFromMenu), keyEquivalent: "")
@@ -82,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
         let launchAtLogin = NSMenuItem(
-            title: L10n.MenuBar.launchAtLogin,
+            title: loginItem.label,
             action: #selector(toggleLaunchAtLoginFromMenu),
             keyEquivalent: ""
         )
@@ -151,17 +152,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
     }
 
-    private func refreshStatusBar(with snapshot: MetricsSnapshot?) {
+    private func refreshStatusBar(with snapshot: MetricsSnapshot?, display: MenuBarDisplay? = nil) {
         guard let button = statusItem.button else { return }
-        switch settings.menuBarDisplay {
+        // Subscribers must pass the newly published value: reading the
+        // property during @Published's willSet phase returns the stale one.
+        switch display ?? settings.menuBarDisplay {
         case .text:
+            button.imagePosition = .noImage
             button.image = nil
             button.title = snapshot.map {
                 "CPU \(MetricsFormatter.cpuPercent($0.cpuPercent))"
             } ?? "CPU —"
         case .graph:
-            button.title = ""
-            button.image = Self.menuBarGraph(from: store.recentCPUPercents())
+            if let image = Self.menuBarGraph(from: store.recentCPUPercents()) {
+                button.imagePosition = .imageOnly
+                button.title = ""
+                button.image = image
+            } else {
+                // Fewer than two usable samples: keep a visible placeholder
+                // instead of an empty status item.
+                button.imagePosition = .noImage
+                button.image = nil
+                button.title = "CPU —"
+            }
         }
     }
 
@@ -203,9 +216,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             settings.$updateInterval.dropFirst().sink { [weak self] interval in
                 self?.store.setUpdateInterval(interval)
             },
-            settings.$menuBarDisplay.dropFirst().sink { [weak self] _ in
+            settings.$menuBarDisplay.dropFirst().sink { [weak self] display in
                 guard let self else { return }
-                self.refreshStatusBar(with: self.store.snapshot)
+                self.refreshStatusBar(with: self.store.snapshot, display: display)
             },
             settings.$appearance.dropFirst().sink { appearance in
                 NSApp.appearance = appearance.nsAppearance
@@ -215,6 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showSettings() {
         popover.performClose(nil)
+        loginItem.refresh()
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

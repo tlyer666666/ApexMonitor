@@ -16,6 +16,7 @@ swiftc \
   Sources/MacPulseCore/MetricsHistory.swift \
   Sources/MacPulseCore/HistoryPersistence.swift \
   Sources/MacPulseCore/HistoryValidation.swift \
+  Sources/MacPulseCore/HistoryRecorder.swift \
   Sources/MacPulseCore/ProcessTable.swift \
   Sources/MacPulseCore/Localization.swift \
   Tests/MacPulseCoreTests/TestMain.swift \

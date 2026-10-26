@@ -11,10 +11,14 @@ public struct NetworkInterfaceCounters: Sendable, Equatable {
 public struct NetworkCounterTotals: Sendable, Equatable {
     public let receivedBytes: UInt64
     public let sentBytes: UInt64
+    /// True when some interface delta could not be classified (counter reset or
+    /// an out-of-band 32-bit wrap). Those bytes are unknown, never measured idle.
+    public let hasUncertainDelta: Bool
 
-    public init(receivedBytes: UInt64, sentBytes: UInt64) {
+    public init(receivedBytes: UInt64, sentBytes: UInt64, hasUncertainDelta: Bool = false) {
         self.receivedBytes = receivedBytes
         self.sentBytes = sentBytes
+        self.hasUncertainDelta = hasUncertainDelta
     }
 }
 
@@ -26,6 +30,7 @@ public struct NetworkCounterAccumulator {
 
     private var states: [String: State] = [:]
     private var retired = NetworkInterfaceCounters(receivedBytes: 0, sentBytes: 0)
+    private var hasUncertainDelta = false
 
     public init() {}
 
@@ -35,6 +40,7 @@ public struct NetworkCounterAccumulator {
     }
 
     public mutating func update(_ current: [String: NetworkInterfaceCounters]) -> NetworkCounterTotals? {
+        hasUncertainDelta = false
         guard !current.isEmpty else {
             // Retire remaining states so their accumulated bytes survive a
             // temporary total interface loss.
@@ -57,12 +63,23 @@ public struct NetworkCounterAccumulator {
                 continue
             }
 
-            state.total = NetworkInterfaceCounters(
-                receivedBytes: state.total.receivedBytes &+ delta(from: state.raw.receivedBytes, to: counters.receivedBytes),
-                sentBytes: state.total.sentBytes &+ delta(from: state.raw.sentBytes, to: counters.sentBytes)
-            )
+            var uncertain = false
+            var received = state.total.receivedBytes
+            var sent = state.total.sentBytes
+            if let delta = delta(from: state.raw.receivedBytes, to: counters.receivedBytes) {
+                received = received &+ delta
+            } else {
+                uncertain = true
+            }
+            if let delta = delta(from: state.raw.sentBytes, to: counters.sentBytes) {
+                sent = sent &+ delta
+            } else {
+                uncertain = true
+            }
+            state.total = NetworkInterfaceCounters(receivedBytes: received, sentBytes: sent)
             state.raw = counters
             states[name] = state
+            hasUncertainDelta = hasUncertainDelta || uncertain
         }
 
         let departed = states.keys.filter { current[$0] == nil }
@@ -80,16 +97,22 @@ public struct NetworkCounterAccumulator {
             totalReceived = totalReceived &+ state.total.receivedBytes
             totalSent = totalSent &+ state.total.sentBytes
         }
-        return NetworkCounterTotals(receivedBytes: totalReceived, sentBytes: totalSent)
+        return NetworkCounterTotals(
+            receivedBytes: totalReceived,
+            sentBytes: totalSent,
+            hasUncertainDelta: hasUncertainDelta
+        )
     }
 
-    private func delta(from old: UInt64, to new: UInt64) -> UInt64 {
+    /// Classifiable deltas only. A decrement is either a counter reset or a
+    /// wrap outside the confident window; both stay unknown instead of
+    /// reporting a fabricated zero.
+    private func delta(from old: UInt64, to new: UInt64) -> UInt64? {
         guard new < old else { return new - old }
-        if old <= UInt64(UInt32.max),
-           new <= UInt64(UInt32.max) / 10,
-           old >= UInt64(UInt32.max) * 9 / 10 {
+        if old >= UInt64(UInt32.max) * 9 / 10,
+           new <= UInt64(UInt32.max) / 10 {
             return UInt64(UInt32.max) - old + new + 1
         }
-        return 0
+        return nil
     }
 }

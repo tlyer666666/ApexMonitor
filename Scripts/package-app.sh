@@ -52,5 +52,16 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+VERSION="${MACPULSE_VERSION:-1.0.0}"
+BUILD="${MACPULSE_BUILD:-1}"
+if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]] || [[ ! "$BUILD" =~ ^[0-9]+$ ]]; then
+    printf 'error: invalid version %s / build %s\n' "$VERSION" "$BUILD" >&2
+    exit 1
+fi
+/usr/libexec/PlistBuddy \
+    -c "Set :CFBundleShortVersionString $VERSION" \
+    -c "Set :CFBundleVersion $BUILD" \
+    "$CONTENTS/Info.plist"
+
 plutil -lint "$CONTENTS/Info.plist"
-printf 'Packaged %s\n' "$APP"
+printf 'Packaged %s (%s build %s)\n' "$APP" "$VERSION" "$BUILD"

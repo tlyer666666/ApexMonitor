@@ -41,11 +41,15 @@ public struct HistoryFileStore: Sendable {
 
     @discardableResult
     public func save(_ buckets: [MinuteBucket]) -> Bool {
+        // The writer must uphold the same contract the reader enforces, so a
+        // successful save can never produce a file this app cannot reopen.
+        guard buckets.count <= 100_000, buckets.allSatisfy(\.isValidHistory) else { return false }
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(buckets)
+            guard data.count <= 64 * 1_024 * 1_024 else { return false }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
             return true
         } catch {

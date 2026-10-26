@@ -44,9 +44,10 @@ struct MetricRow: View {
 
 struct MemoryTrendShape: Shape {
     let values: [Double]
+    var percentDomain: Bool = true
 
     func path(in rect: CGRect) -> Path {
-        let normalized = MemoryTrendGeometry.normalizedPoints(for: values)
+        let normalized = MemoryTrendGeometry.normalizedPoints(for: values, percentDomain: percentDomain)
         guard !normalized.isEmpty else { return Path() }
         let points = normalized.map { point in
             CGPoint(

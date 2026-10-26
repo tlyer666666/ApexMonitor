@@ -17,6 +17,12 @@ jobs:
       - name: Process sampling (real libproc)
         run: bash Scripts/process-test.sh
 
+      - name: Lifecycle, history and installer suites
+        run: Scripts/integration-test.sh
+
+      - name: System sensor smoke
+        run: Scripts/smoke.sh
+
       - name: Package app bundle
         run: Scripts/package-app.sh
 

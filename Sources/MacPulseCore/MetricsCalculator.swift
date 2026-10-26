@@ -1,15 +1,41 @@
 import Foundation
 
+/// Sampling-validity policy shared by the scheduler and the calculator so the
+/// configured cadence (1/2/5 seconds) and "this gap is an interruption" share
+/// one bound: twice the cadence, never below the historical 5-second limit.
+public enum SamplingValidity {
+    public static func maxValidInterval(forConfiguredInterval configured: TimeInterval) -> TimeInterval {
+        guard configured.isFinite, configured > 0 else { return 5 }
+        return max(5, configured * 2)
+    }
+
+    public static func isSamplingGap(wallSeconds: TimeInterval, configuredInterval: TimeInterval) -> Bool {
+        guard wallSeconds.isFinite, wallSeconds >= 0 else { return true }
+        return wallSeconds > maxValidInterval(forConfiguredInterval: configuredInterval)
+    }
+}
+
 public struct MetricsCalculator {
     private var previous: RawMetricsSample?
+    public private(set) var maxValidInterval: Double
 
-    public init() {}
+    public init(maxValidInterval: Double = 5) {
+        guard maxValidInterval.isFinite, maxValidInterval > 0 else {
+            preconditionFailure("maxValidInterval must be finite and positive")
+        }
+        self.maxValidInterval = maxValidInterval
+    }
+
+    public mutating func setMaxValidInterval(_ value: Double) {
+        guard value.isFinite, value > 0 else { return }
+        maxValidInterval = value
+    }
 
     public mutating func update(_ sample: RawMetricsSample) -> MetricsSnapshot {
         let elapsed: Double? = {
             guard let previous else { return nil }
             let value = sample.uptime - previous.uptime
-            guard value.isFinite, value > 0, value <= 5 else { return nil }
+            guard value.isFinite, value > 0, value <= maxValidInterval else { return nil }
             return value
         }()
 

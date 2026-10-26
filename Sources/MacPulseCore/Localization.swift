@@ -1,46 +1,11 @@
 import Foundation
 
-/// App language selection. Chinese is the default; `system` is an explicit
-/// opt-in that follows the user's macOS preference.
-public enum AppLanguage: String, CaseIterable, Sendable {
-    case zhHans = "zh-Hans"
-    case en = "en"
-    case system
-
-    public var label: String {
-        switch self {
-        case .zhHans: return "简体中文"
-        case .en: return "English"
-        case .system: return L10n.tr("跟随系统", "Follow System")
-        }
-    }
-
-    /// Decodes a persisted preference; anything missing or unreadable falls
-    /// back to Simplified Chinese so the app is Chinese out of the box.
-    public static func stored(_ rawValue: String?) -> AppLanguage {
-        guard let rawValue, let language = AppLanguage(rawValue: rawValue) else { return .zhHans }
-        return language
-    }
-}
-
-/// Bilingual string catalog, Chinese-first: the app defaults to Simplified
-/// Chinese regardless of the system language; English and Follow System are
-/// explicit choices in Settings. `override` is persisted in UserDefaults.
+/// The product ships Simplified Chinese only. `tr` keeps its second argument
+/// so call sites stay stable, but Chinese is always selected; there is no
+/// runtime language switch and no global mutable language state.
 public enum L10n {
-    public nonisolated(unsafe) static var override: AppLanguage?
-
-    public static var language: AppLanguage {
-        switch override {
-        case .zhHans: return .zhHans
-        case .en: return .en
-        case .system, nil:
-            let preferred = Locale.preferredLanguages.first ?? "en"
-            return preferred.hasPrefix("zh") ? .zhHans : .en
-        }
-    }
-
     public static func tr(_ zh: String, _ en: String) -> String {
-        language == .zhHans ? zh : en
+        zh
     }
 
     public enum MenuBar {
@@ -53,6 +18,9 @@ public enum L10n {
         public static var launchAtLogin: String { tr("开机启动", "Launch at Login") }
         public static var launchAtLoginOn: String { tr("开机启动 · 已开启", "Launch at Login · On") }
         public static var launchAtLoginOff: String { tr("开机启动 · 已关闭", "Launch at Login · Off") }
+        public static var launchAtLoginApproval: String { tr("开机启动 · 待批准", "Launch at Login · Approval Pending") }
+        public static var launchAtLoginError: String { tr("开机启动设置失败，请在系统设置 → 通用 → 登录项中手动开启。", "Registration failed; enable it manually in System Settings → General → Login Items.") }
+        public static var launchAtLoginApprovalNote: String { tr("系统已收到请求，请在系统设置 → 通用 → 登录项中批准。", "The request was received; approve it in System Settings → General → Login Items.") }
         public static var enabled: String { tr("已开启", "On") }
         public static var disabled: String { tr("已关闭", "Off") }
         public static var settings: String { tr("设置…", "Settings…") }
@@ -156,8 +124,6 @@ public enum L10n {
         public static var dark: String { tr("深色", "Dark") }
         public static var general: String { tr("通用", "General") }
         public static var launchAtLogin: String { tr("开机启动", "Launch at Login") }
-        public static var language: String { tr("语言", "Language") }
-        public static var languageNote: String { tr("语言切换即时生效。", "Language changes apply immediately.") }
     }
 
     public enum Formatter {

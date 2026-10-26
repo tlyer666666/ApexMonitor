@@ -38,7 +38,8 @@ enum AppAppearance: String, CaseIterable {
 
 /// User-facing preferences persisted in UserDefaults. Views bind to the
 /// published values; AppDelegate applies them (sampler interval, menu bar
-/// rendering, global appearance) as they change.
+/// rendering, global appearance) as they change. The UI language is fixed
+/// Simplified Chinese, so historical language preferences are discarded.
 @MainActor
 final class AppSettings: ObservableObject {
     @Published var updateInterval: Double {
@@ -50,19 +51,13 @@ final class AppSettings: ObservableObject {
     @Published var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: Self.appearanceKey) }
     }
-    @Published var appLanguage: AppLanguage {
-        didSet {
-            defaults.set(appLanguage.rawValue, forKey: Self.appLanguageKey)
-            L10n.override = appLanguage
-        }
-    }
 
     private let defaults: UserDefaults
 
     static let updateIntervalKey = "updateInterval"
     static let menuBarDisplayKey = "menuBarDisplay"
     static let appearanceKey = "appearance"
-    static let appLanguageKey = "appLanguage"
+    private static let legacyAppLanguageKey = "appLanguage"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -70,7 +65,6 @@ final class AppSettings: ObservableObject {
         updateInterval = [1.0, 2.0, 5.0].contains(storedInterval) ? storedInterval : 1.0
         menuBarDisplay = MenuBarDisplay(rawValue: defaults.string(forKey: Self.menuBarDisplayKey) ?? "") ?? .text
         appearance = AppAppearance(rawValue: defaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
-        appLanguage = AppLanguage.stored(defaults.string(forKey: Self.appLanguageKey))
-        L10n.override = appLanguage
+        defaults.removeObject(forKey: Self.legacyAppLanguageKey)
     }
 }

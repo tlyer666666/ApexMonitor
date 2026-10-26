@@ -56,10 +56,11 @@ final class MetricsSampler {
         guard let worker else { return }
         generation &+= 1
         let token = generation
+        let cadence = interval
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(150))
         timer.setEventHandler { [weak self] in
-            let result = worker.sample()
+            let result = worker.sample(configuredInterval: cadence)
             Task { @MainActor [weak self] in
                 guard let self, self.generation == token, self.timer != nil else { return }
                 self.deliver?(result.0, result.1, result.2)
@@ -86,10 +87,17 @@ private final class SamplingWorker: @unchecked Sendable {
         self.interfaces = interfaces
     }
 
-    func sample() -> (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) {
+    func sample(configuredInterval: TimeInterval) -> (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) {
+        // The validity bound follows the configured cadence (twice the cadence,
+        // at least the historical 5 seconds) so the 5-second setting survives
+        // scheduler jitter while real gaps still rebuild the baseline.
+        let maxInterval = SamplingValidity.maxValidInterval(forConfiguredInterval: configuredInterval)
+        calculator.setMaxValidInterval(maxInterval)
         let date = Date()
-        if let previousDate, !(0...5).contains(date.timeIntervalSince(previousDate)) {
-            calculator = MetricsCalculator()
+        if let previousDate,
+           SamplingValidity.isSamplingGap(wallSeconds: date.timeIntervalSince(previousDate),
+                                          configuredInterval: configuredInterval) {
+            calculator = MetricsCalculator(maxValidInterval: maxInterval)
             _ = network.update([:])
         }
         previousDate = date
@@ -101,7 +109,10 @@ private final class SamplingWorker: @unchecked Sendable {
             _ = network.update([:])
             totals = nil
         }
-        let snapshot = calculator.update(read(totals))
+        // Unclassifiable counter deltas (reset or out-of-band wrap) stay
+        // unknown for this interval instead of reading as measured zero.
+        let usableTotals = totals.flatMap { $0.hasUncertainDelta ? nil : $0 }
+        let snapshot = calculator.update(read(usableTotals))
         return (snapshot, network.runtimeTotalsByInterface(), date)
     }
 }

@@ -92,6 +92,7 @@ func testNetworkCounterAccumulatorUnwrapsEachInterfaceBeforeSumming() {
 
     expect(totals?.receivedBytes == 251, "each interface's receive wrap is expanded before totals are summed")
     expect(totals?.sentBytes == 126, "each interface's send wrap is expanded before totals are summed")
+    expect(totals?.hasUncertainDelta == false, "a confident wrap is measured traffic, not uncertainty")
 }
 
 func testNetworkCounterAccumulatorDoesNotTurnOrdinaryResetIntoTraffic() {
@@ -108,4 +109,20 @@ func testNetworkCounterAccumulatorDoesNotTurnOrdinaryResetIntoTraffic() {
 
     expect(totals?.receivedBytes == 50, "ordinary receive reset contributes no artificial four-gibibyte burst")
     expect(totals?.sentBytes == 25, "ordinary send reset contributes no artificial four-gibibyte burst")
+    expect(totals?.hasUncertainDelta == true, "an unclassifiable counter reset is flagged uncertain")
+}
+
+func testAmbiguousNetworkWrapIsUnknownInsteadOfMeasuredIdle() {
+    var accumulator = NetworkCounterAccumulator()
+    _ = accumulator.update(["en0": .init(receivedBytes: 3_000_000_000, sentBytes: 3_000_000_000)])
+
+    let wrapped = accumulator.update(["en0": .init(receivedBytes: 100_000_000, sentBytes: 700_000_000)])
+    expect(wrapped?.hasUncertainDelta == true, "an out-of-band wrap is uncertain, not measured idle")
+    expect(wrapped?.receivedBytes == 0, "uncertain deltas add no fabricated bytes")
+    expect(wrapped?.sentBytes == 0, "uncertain deltas add no fabricated bytes on either direction")
+
+    let growing = accumulator.update(["en0": .init(receivedBytes: 100_000_100, sentBytes: 700_000_100)])
+    expect(growing?.receivedBytes == 100 && growing?.sentBytes == 100,
+           "totals resume from the last known cumulative value after uncertainty")
+    expect(growing?.hasUncertainDelta == false, "ordinary growth after uncertainty is measured traffic")
 }
