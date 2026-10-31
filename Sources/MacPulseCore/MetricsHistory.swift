@@ -324,13 +324,19 @@ public enum HistoryAnalyzer {
                 merged[bucket.minuteStart] = bucket
                 continue
             }
-            merged[bucket.minuteStart] = MinuteBucket(
-                minuteStart: bucket.minuteStart,
-                sampleCount: existing.sampleCount + bucket.sampleCount,
-                metadata: existing.resolvedMetadata.merged(with: bucket.resolvedMetadata)
-            )
+            merged[bucket.minuteStart] = mergedBucket(existing, bucket)
         }
         return merged.values.sorted { $0.minuteStart < $1.minuteStart }
+    }
+
+    /// Merges two fragments of one minute. Internal so the recorder can upsert
+    /// incrementally instead of rebuilding and re-sorting the whole history.
+    static func mergedBucket(_ first: MinuteBucket, _ second: MinuteBucket) -> MinuteBucket {
+        MinuteBucket(
+            minuteStart: first.minuteStart,
+            sampleCount: first.sampleCount + second.sampleCount,
+            metadata: first.resolvedMetadata.merged(with: second.resolvedMetadata)
+        )
     }
 
     /// Retention for storage must not delete observations just because a wall
@@ -354,10 +360,29 @@ public enum HistoryAnalyzer {
         within seconds: TimeInterval,
         now: Date
     ) -> [MetricPoint] {
+        minuteSeries(fromSorted: buckets.sorted { $0.minuteStart < $1.minuteStart }, within: seconds, now: now)
+    }
+
+    /// Same overlap semantics as `minuteSeries(from:)` for input already
+    /// sorted by `minuteStart`. Leading buckets that cannot overlap the window
+    /// are skipped by binary search; valid history cannot observe beyond its
+    /// own minute (enforced by validation), so `minuteStart + 60` bounds the
+    /// observed span.
+    static func minuteSeries(
+        fromSorted buckets: [MinuteBucket],
+        within seconds: TimeInterval,
+        now: Date
+    ) -> [MetricPoint] {
         guard seconds.isFinite, seconds > 0 else { return [] }
         let end = now.timeIntervalSince1970
         let cutoff = end - seconds
-        return buckets.sorted { $0.minuteStart < $1.minuteStart }.compactMap { bucket in
+        var low = 0
+        var high = buckets.count
+        while low < high {
+            let mid = (low + high) / 2
+            if buckets[mid].minuteStart.timeIntervalSince1970 + 60 <= cutoff { low = mid + 1 } else { high = mid }
+        }
+        return buckets[low...].compactMap { bucket in
             guard bucket.minuteStart <= now else { return nil }
             let metadata = bucket.resolvedMetadata
             let start = metadata.startTimestamp ?? bucket.minuteStart.timeIntervalSince1970

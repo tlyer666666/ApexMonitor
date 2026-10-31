@@ -27,7 +27,10 @@ final class MonitorStore: ObservableObject {
     private var isRunning = false
     private var lifecycle: UInt64 = 0
     private var bucketsSinceSave = 0
-    private var seriesCache: (range: HistoryRange, revision: UInt64, second: Int, value: MetricSeries)?
+    /// Per-range chart cache: the dashboard, the popover and the traffic
+    /// detail query different windows in the same second without evicting
+    /// each other.
+    private var seriesCache: [HistoryRange: (revision: UInt64, second: Int, value: MetricSeries)] = [:]
 
     init(historyFile: HistoryFileStore = .defaultStore()) {
         repository = HistoryRepository(file: historyFile)
@@ -101,12 +104,11 @@ final class MonitorStore: ObservableObject {
     func series(for range: HistoryRange) -> MetricSeries {
         let now = Date()
         let second = Int(now.timeIntervalSince1970)
-        if let cache = seriesCache, cache.range == range,
-           cache.revision == historyRevision, cache.second == second {
+        if let cache = seriesCache[range], cache.revision == historyRevision, cache.second == second {
             return cache.value
         }
         let result = history.series(for: range, now: now)
-        seriesCache = (range, historyRevision, second, result)
+        seriesCache[range] = (historyRevision, second, result)
         return result
     }
 
