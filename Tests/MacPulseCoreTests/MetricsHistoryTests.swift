@@ -457,7 +457,9 @@ func testHistoryMetadataCannotContradictTopLevelFields() throws {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
 
-    func tampered(_ mutate: (inout [String: Any]) -> Void) throws -> HistoryFileStore {
+    // The store stays alive while `body` runs, so rejections are the
+    // validator's verdict and never a deleted-fixture artifact.
+    func withTamperedHistory(_ mutate: (inout [String: Any]) -> Void, _ body: (HistoryFileStore) throws -> Void) throws {
         var objects = try JSONSerialization.jsonObject(with: encoder.encode([bucket])) as! [[String: Any]]
         mutate(&objects[0])
         let directory = FileManager.default.temporaryDirectory
@@ -466,26 +468,63 @@ func testHistoryMetadataCannotContradictTopLevelFields() throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = HistoryFileStore(directory: directory)
         try JSONSerialization.data(withJSONObject: objects).write(to: store.fileURL)
-        return store
+        try body(store)
     }
 
-    let inflatedSum = try tampered { objects in
+    try withTamperedHistory({ _ in }) { store in
+        expect(store.load().count == 1, "the untampered fixture is readable before any tampering")
+    }
+
+    try withTamperedHistory({ objects in
         var metadata = objects["metadata"] as! [String: Any]
         var cpu = metadata["cpu"] as! [String: Any]
         cpu["valueSum"] = 10_000.0
         metadata["cpu"] = cpu
         objects["metadata"] = metadata
+    }) { store in
+        expect(store.load().isEmpty, "metadata contradicting the top-level averages is rejected on read")
     }
-    expect(inflatedSum.load().isEmpty, "metadata contradicting the top-level averages is rejected on read")
 
-    let inflatedPeak = try tampered { objects in
+    try withTamperedHistory({ objects in
         var metadata = objects["metadata"] as! [String: Any]
         var cpu = metadata["cpu"] as! [String: Any]
         cpu["samplePeak"] = 10_000.0
         metadata["cpu"] = cpu
         objects["metadata"] = metadata
+    }) { store in
+        expect(store.load().isEmpty, "cpu sample peaks above 100 percent are rejected on read")
     }
-    expect(inflatedPeak.load().isEmpty, "cpu sample peaks above 100 percent are rejected on read")
+
+    try withTamperedHistory({ objects in
+        var metadata = objects["metadata"] as! [String: Any]
+        metadata["endTimestamp"] = historyBase.addingTimeInterval(120).timeIntervalSince1970
+        objects["metadata"] = metadata
+    }) { store in
+        expect(store.load().isEmpty, "metadata claiming observations beyond the bucket minute is rejected on read")
+    }
+}
+
+func testSessionUpsertMergesFragmentsOfOneMinuteAfterRollback() {
+    let base = Date(timeIntervalSince1970: 1_800_001_200)
+    func snapshot(cpu: Double, receive: Double) -> MetricsSnapshot {
+        MetricsSnapshot(timestamp: 1, cpuPercent: cpu, memoryUsedBytes: 1, memoryTotalBytes: 2,
+                        memoryPercent: 50, diskReadBytesPerSecond: nil, diskWriteBytesPerSecond: nil,
+                        networkReceiveBytesPerSecond: receive, networkSendBytesPerSecond: nil,
+                        sampleDurationSeconds: 1)
+    }
+    var recorder = HistoryRecorder()
+    recorder.record(snapshot(cpu: 100, receive: 100), at: base.addingTimeInterval(150))
+    recorder.record(snapshot(cpu: 0, receive: 0), at: base.addingTimeInterval(10))
+    recorder.record(snapshot(cpu: 50, receive: 0), at: base.addingTimeInterval(130))
+    recorder.record(snapshot(cpu: 0, receive: 0), at: base.addingTimeInterval(185))
+
+    guard let minute = recorder.sessionBuckets.last else {
+        expect(false, "revisited minutes leave a merged session bucket")
+        return
+    }
+    expect(minute.minuteStart == base.addingTimeInterval(120), "the re-sampled minute merges at its own minute start")
+    expect(minute.sampleCount == 2, "revisited minutes merge the pre-rollback fragment with the re-sampled one")
+    expectNear(minute.cpuAverage ?? -1, 75, "merged fragment keeps the sample-weighted cpu average")
 }
 
 func testSaveRejectsHistoriesTheReaderWouldReject() throws {
@@ -589,6 +628,7 @@ func runMetricsHistoryTests() throws {
     testCurrentBucketPreviewDoesNotConsumeOrDuplicateSamples()
     try testHistoryMetadataCannotContradictTopLevelFields()
     try testSaveRejectsHistoriesTheReaderWouldReject()
+    testSessionUpsertMergesFragmentsOfOneMinuteAfterRollback()
     testRateGeometryKeepsRealSpeedVariation()
     testSeriesAfterClockRollbackMatchesReloadedSeries()
 }

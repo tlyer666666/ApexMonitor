@@ -53,7 +53,8 @@ extension MinuteBucket {
 
         guard metadata.trafficCoverageSeconds.isFinite, metadata.trafficCoverageSeconds >= 0 else { return false }
         if let start = metadata.startTimestamp, let end = metadata.endTimestamp {
-            return start.isFinite && end.isFinite && start <= end
+            return start.isFinite && end.isFinite && start <= end &&
+                end <= minuteStart.timeIntervalSince1970 + 60 + Self.tolerance
         }
         return metadata.startTimestamp == nil && metadata.endTimestamp == nil
     }
