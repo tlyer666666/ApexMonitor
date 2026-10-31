@@ -28,3 +28,6 @@ jobs:
 
       - name: Lint Info.plist
         run: plutil -lint dist/MacPulse.app/Contents/Info.plist
+
+      - name: Swift 6 strict concurrency typecheck
+        run: Scripts/typecheck-swift6.sh

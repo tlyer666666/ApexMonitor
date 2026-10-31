@@ -190,7 +190,7 @@ struct SystemMetricsReader {
             )
         }
         guard status == 0 else { return nil }
-        return String(cString: host)
+        return String(decoding: host.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 
     func readNetworkInterfaces() -> [String: NetworkInterfaceCounters]? {
