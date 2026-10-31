@@ -10,9 +10,9 @@ struct NetworkPathStatus: Sendable, Equatable {
 /// internal queue and must be republished by the caller.
 final class NetworkPathMonitor {
     private let monitor = NWPathMonitor()
-    private let onUpdate: (NetworkPathStatus) -> Void
+    private let onUpdate: @Sendable (NetworkPathStatus) -> Void
 
-    init(onUpdate: @escaping (NetworkPathStatus) -> Void) {
+    init(onUpdate: @escaping @Sendable (NetworkPathStatus) -> Void) {
         self.onUpdate = onUpdate
         monitor.pathUpdateHandler = { path in
             onUpdate(NetworkPathStatus(
