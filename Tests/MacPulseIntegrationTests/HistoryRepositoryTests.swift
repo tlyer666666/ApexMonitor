@@ -72,5 +72,15 @@ struct RepositoryTests {
             exit(1)
         }
         print("PASS: invalid numeric history is preserved rather than merged into live data")
+
+        // The user may repair or replace the history file while the app runs;
+        // the repository must adopt the fixed file without a restart.
+        precondition(corrupt.save([old]))
+        let healed = recovering.saveAndWait(session: [new], now: now)
+        guard healed.error == nil, corrupt.load() == HistoryAnalyzer.mergedBuckets([old, new]) else {
+            fputs("FAIL: a repaired history file must be picked up without restarting the app\n", stderr)
+            exit(1)
+        }
+        print("PASS: repaired history file is adopted without an app restart")
     }
 }

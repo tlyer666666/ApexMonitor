@@ -341,9 +341,11 @@ public enum HistoryAnalyzer {
 
     /// Retention for storage must not delete observations just because a wall
     /// clock adjustment temporarily places their timestamp in the future.
+    /// Buckets stay while their nominal minute span (`minuteStart + 60`) still
+    /// reaches into the window; queries prune by exact overlap.
     public static func retainedBuckets(_ buckets: [MinuteBucket], now: Date) -> [MinuteBucket] {
-        let cutoff = now.addingTimeInterval(-retentionSeconds)
-        return buckets.filter { $0.minuteStart > cutoff }
+        let cutoff = now.addingTimeInterval(-retentionSeconds).timeIntervalSince1970
+        return buckets.filter { $0.minuteStart.timeIntervalSince1970 + 60 > cutoff }
     }
 
     public static func prunedBuckets(

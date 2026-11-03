@@ -601,6 +601,25 @@ func testSeriesAfterClockRollbackMatchesReloadedSeries() {
            "live and reloaded series agree on traffic totals after a clock rollback")
 }
 
+func testRetentionKeepsMinutesStillOverlappingTheWindowEdge() {
+    let now = historyBase.addingTimeInterval(8 * 86_400)
+    let cutoff = now.addingTimeInterval(-HistoryAnalyzer.retentionSeconds)
+    func bucket(minuteStart: Date) -> MinuteBucket {
+        MinuteBucket(
+            minuteStart: minuteStart, sampleCount: 1,
+            cpuAverage: 1, cpuPeak: 1, memoryAverage: nil, memoryPeak: nil,
+            diskReadAverage: nil, diskReadPeak: nil, diskWriteAverage: nil, diskWritePeak: nil,
+            networkReceiveAverage: nil, networkReceivePeak: nil, networkSendAverage: nil, networkSendPeak: nil
+        )
+    }
+    let straddling = bucket(minuteStart: cutoff.addingTimeInterval(-30))
+    expect(HistoryAnalyzer.retainedBuckets([straddling], now: now) == [straddling],
+           "a minute crossing the retention cutoff stays until its observations age out")
+    let fullyOutside = bucket(minuteStart: cutoff.addingTimeInterval(-90))
+    expect(HistoryAnalyzer.retainedBuckets([fullyOutside], now: now).isEmpty,
+           "a minute that ended before the cutoff is dropped")
+}
+
 func runMetricsHistoryTests() throws {
     testAggregatorEmitsBucketWhenMinuteRolls()
     testAggregatorFlushEmitsPartialBucketWithoutLosingData()
@@ -631,4 +650,5 @@ func runMetricsHistoryTests() throws {
     testSessionUpsertMergesFragmentsOfOneMinuteAfterRollback()
     testRateGeometryKeepsRealSpeedVariation()
     testSeriesAfterClockRollbackMatchesReloadedSeries()
+    testRetentionKeepsMinutesStillOverlappingTheWindowEdge()
 }
