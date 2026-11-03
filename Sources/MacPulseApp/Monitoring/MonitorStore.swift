@@ -12,6 +12,8 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var loadAverage: LoadAverage?
     @Published private(set) var historyError: String?
     @Published private(set) var lastUpdateDate: Date?
+    /// Mirrors the configured cadence so views can describe it truthfully.
+    @Published private(set) var updateInterval: Double = 1
     @Published var navigationPath: [MetricCategory] = []
     @Published var selectedRange: HistoryRange = .fifteenMinutes
     /// Lives here (not in view @State) so the choice survives navigation.
@@ -65,6 +67,7 @@ final class MonitorStore: ObservableObject {
             }
         }
         sampler.updateInterval(interval)
+        updateInterval = interval
         pathMonitor = NetworkPathMonitor { [weak self] status in
             Task { @MainActor [weak self] in
                 guard let self, self.isRunning, self.lifecycle == token else { return }
@@ -82,6 +85,7 @@ final class MonitorStore: ObservableObject {
     func setUpdateInterval(_ seconds: TimeInterval) {
         guard isRunning else { return }
         sampler.updateInterval(seconds)
+        updateInterval = seconds
     }
 
     func stop() {
