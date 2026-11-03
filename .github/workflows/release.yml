@@ -41,3 +41,9 @@ jobs:
         with:
           name: MacPulse-${{ github.ref_name }}.dmg
           path: dist/MacPulse.dmg
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/MacPulse.dmg
+          generate_release_notes: true
