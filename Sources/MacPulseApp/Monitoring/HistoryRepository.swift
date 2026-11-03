@@ -33,12 +33,12 @@ final class HistoryRepository: @unchecked Sendable {
     }
 
     private func ensureLoaded() {
-        guard baseline == nil else { return }
+        if loadError == nil, baseline != nil { return }
         do {
             baseline = HistoryAnalyzer.mergedBuckets(try file.read())
             loadError = nil
         } catch {
-            baseline = []
+            if baseline == nil { baseline = [] }
             loadError = L10n.Errors.historyLoadFailed
         }
     }

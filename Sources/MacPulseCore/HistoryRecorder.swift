@@ -57,8 +57,9 @@ struct HistoryRecorder {
     }
 
     func buckets(at now: Date) -> [MinuteBucket] {
-        let cutoff = now.addingTimeInterval(-HistoryAnalyzer.retentionSeconds)
+        let cutoff = now.addingTimeInterval(-HistoryAnalyzer.retentionSeconds).timeIntervalSince1970
         // Linear merge of two sorted arrays: no dictionary build, no sort.
+        // A bucket stays while its minute span still reaches the cutoff.
         var merged: [MinuteBucket] = []
         merged.reserveCapacity(restored.count + sessionBuckets.count + 1)
         var i = 0
@@ -88,7 +89,7 @@ struct HistoryRecorder {
                 merged.insert(partial, at: index)
             }
         }
-        return merged.filter { $0.minuteStart > cutoff }
+        return merged.filter { $0.minuteStart.timeIntervalSince1970 + 60 > cutoff }
     }
 
     func series(for range: HistoryRange, now: Date) -> MetricSeries {
@@ -132,18 +133,18 @@ struct HistoryRecorder {
     }
 
     private mutating func prune(around date: Date) {
-        let cutoff = date.addingTimeInterval(-HistoryAnalyzer.retentionSeconds)
+        let cutoff = date.addingTimeInterval(-HistoryAnalyzer.retentionSeconds).timeIntervalSince1970
         prune(&restored, cutoff: cutoff)
         prune(&sessionBuckets, cutoff: cutoff)
-        nonDetailMinutes = nonDetailMinutes.filter { $0 > cutoff }
+        nonDetailMinutes = nonDetailMinutes.filter { $0.timeIntervalSince1970 + 60 > cutoff }
     }
 
-    private func prune(_ buckets: inout [MinuteBucket], cutoff: Date) {
+    private func prune(_ buckets: inout [MinuteBucket], cutoff: Double) {
         var low = 0
         var high = buckets.count
         while low < high {
             let mid = (low + high) / 2
-            if buckets[mid].minuteStart <= cutoff { low = mid + 1 } else { high = mid }
+            if buckets[mid].minuteStart.timeIntervalSince1970 + 60 <= cutoff { low = mid + 1 } else { high = mid }
         }
         if low > 0 { buckets.removeFirst(low) }
     }
