@@ -52,6 +52,15 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Version defaults come from git so local bundles are traceable; CI passes
+# MACPULSE_VERSION explicitly (see the release workflow).
+if [[ -z "${MACPULSE_VERSION:-}" ]]; then
+    MACPULSE_VERSION="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
+    MACPULSE_VERSION="${MACPULSE_VERSION#v}"
+fi
+if [[ -z "${MACPULSE_BUILD:-}" ]]; then
+    MACPULSE_BUILD="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || true)"
+fi
 VERSION="${MACPULSE_VERSION:-1.0.0}"
 BUILD="${MACPULSE_BUILD:-1}"
 if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]] || [[ ! "$BUILD" =~ ^[0-9]+$ ]]; then

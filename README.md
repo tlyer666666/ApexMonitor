@@ -1,5 +1,7 @@
 # MacPulse
 
+[![CI](https://github.com/tlyer666666/ApexMonitor/actions/workflows/ci.yml/badge.svg)](https://github.com/tlyer666666/ApexMonitor/actions/workflows/ci.yml)
+
 原生 macOS 菜单栏性能监控器。菜单栏常驻显示 CPU 使用率，点开就能看到 CPU、内存、磁盘读写和网络收发的实时状态与历史趋势。数据全部来自系统公开接口，无第三方依赖，不联网，不需要管理员权限。
 
 ## 功能
