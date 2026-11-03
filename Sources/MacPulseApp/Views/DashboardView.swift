@@ -39,34 +39,42 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                HStack(spacing: 5) {
-                    Circle().fill(.green).frame(width: 7, height: 7)
-                    Text(L10n.Dashboard.updating)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let updated = lastUpdateAge {
-                    Text(updated)
-                        .font(.system(.caption2, design: .rounded).monospacedDigit())
-                        .foregroundStyle(lastUpdateStale ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
-                }
-                Text(L10n.Dashboard.localOnlyNote)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            // Ticks once per second on its own so the update age stays live
+            // even when nothing else in the view re-renders.
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                statusColumn(asOf: timeline.date)
             }
         }
     }
 
-    private var lastUpdateAge: String? {
+    private func statusColumn(asOf now: Date) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 5) {
+                Circle().fill(.green).frame(width: 7, height: 7)
+                Text(L10n.Dashboard.updateCadence(store.updateInterval))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let updated = lastUpdateAge(asOf: now) {
+                Text(updated)
+                    .font(.system(.caption2, design: .rounded).monospacedDigit())
+                    .foregroundStyle(lastUpdateStale(asOf: now) ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
+            }
+            Text(L10n.Dashboard.localOnlyNote)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func lastUpdateAge(asOf now: Date) -> String? {
         guard let date = store.lastUpdateDate else { return nil }
-        let age = Int(Date().timeIntervalSince(date))
+        let age = Int(now.timeIntervalSince(date))
         return age < 2 ? L10n.Dashboard.justUpdated : L10n.Dashboard.updatedAgo(age)
     }
 
-    private var lastUpdateStale: Bool {
+    private func lastUpdateStale(asOf now: Date) -> Bool {
         guard let date = store.lastUpdateDate else { return false }
-        return Date().timeIntervalSince(date) > 3
+        return now.timeIntervalSince(date) > 3 * store.updateInterval
     }
 
     private var rangePicker: some View {

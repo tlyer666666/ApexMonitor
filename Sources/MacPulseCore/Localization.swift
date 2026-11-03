@@ -39,9 +39,13 @@ public enum L10n {
         }
         public static var title: String { tr("系统性能", "System Performance") }
         public static var subtitle: String { tr("MacPulse · 实时监控与历史统计", "MacPulse · Live Monitoring & History") }
-        public static var updating: String { tr("每秒更新", "Updates every second") }
         public static var justUpdated: String { tr("刚刚更新", "Updated just now") }
         public static func updatedAgo(_ seconds: Int) -> String { tr("最后更新 \(seconds) 秒前", "Updated \(seconds)s ago") }
+        public static func updateCadence(_ interval: Double) -> String {
+            if interval < 1.5 { return tr("每秒更新", "Updates every second") }
+            let seconds = Int(interval.rounded())
+            return tr("每 \(seconds) 秒更新", "Updates every \(seconds)s")
+        }
         public static var localOnlyNote: String { tr("历史数据仅保存在本机", "History stays on this Mac") }
         public static var footer: String { tr("当前范围：%@ · 历史分钟均值与本次运行明细 · 保留 7 天", "Range: %@ · minute means with live detail · 7-day retention") }
         public static var totalUsage: String { tr("总使用率", "Total usage") }

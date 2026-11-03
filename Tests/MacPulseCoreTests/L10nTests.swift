@@ -13,7 +13,15 @@ func testFormatterMarkersStayChinese() {
     expect(L10n.Formatter.memoryFallback == "物理内存", "memory fallback stays Chinese")
 }
 
+func testDashboardCadenceTextReflectsConfiguredInterval() {
+    expect(L10n.Dashboard.updateCadence(1) == "每秒更新", "one-second cadence keeps the every-second wording")
+    expect(L10n.Dashboard.updateCadence(2) == "每 2 秒更新", "two-second cadence names its interval")
+    expect(L10n.Dashboard.updateCadence(5) == "每 5 秒更新", "five-second cadence names its interval")
+    expect(L10n.Dashboard.updateCadence(2.4) == "每 2 秒更新", "fractional cadences round to whole seconds")
+}
+
 func runL10nTests() {
     testStringsAreSimplifiedChineseOnly()
     testFormatterMarkersStayChinese()
+    testDashboardCadenceTextReflectsConfiguredInterval()
 }
