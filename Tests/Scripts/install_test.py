@@ -75,3 +75,31 @@ with tempfile.TemporaryDirectory(prefix="macpulse-install-test-") as directory:
     assert not list((home / "Applications").glob(".macpulse-install.*")), "cleanup must remove the staging directory"
     assert not (home / "Desktop/MacPulse").is_symlink()
     print("PASS: a failed desktop-link step restores the previous install")
+
+    # Simulate a failed swap: a fake `mv` refuses the staging→destination move
+    # (and only that one; the backup move and the cleanup restore still work).
+    home = temporary / "failed-swap-restores-previous"
+    (home / "Desktop").mkdir(parents=True)
+    previous = home / "Applications/MacPulse.app"
+    bundle(previous)
+    (previous / "previous-marker").write_text("previous install")
+    (project / "dist/MacPulse.app/next-marker").write_text("new build")
+    bin_dir = temporary / "fake-bin"
+    bin_dir.mkdir()
+    (bin_dir / "mv").write_text(
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        "*/.macpulse-install.*/MacPulse.app) echo 'mv: simulated failure' >&2; exit 1;;\n"
+        "*) exec /bin/mv \"$@\";;\n"
+        "esac\n"
+    )
+    (bin_dir / "mv").chmod(0o755)
+    result = subprocess.run(["bash", str(project / "Scripts/install.sh")],
+                            env=os.environ | {"HOME": str(home), "PATH": f"{bin_dir}:/usr/bin:/bin"},
+                            capture_output=True, text=True)
+    assert result.returncode != 0, "a failed swap must abort, not report success"
+    assert (previous / "previous-marker").is_file(), "a failed swap must restore the previous version"
+    assert not (previous / "next-marker").exists(), "the failed build must not remain at the destination"
+    assert not list((home / "Applications").glob(".macpulse-install.*")), "cleanup must remove the staging directory"
+    assert "Installed" not in result.stdout, "a failed swap must not print success"
+    print("PASS: a failed swap aborts and restores the previous install")

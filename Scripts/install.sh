@@ -62,13 +62,15 @@ plutil -lint "$STAGING/$APP_NAME.app/Contents/Info.plist"
 if [[ -d "$DESTINATION" ]]; then
     mv "$DESTINATION" "$BACKUP"
 fi
-if mv "$STAGING/$APP_NAME.app" "$DESTINATION"; then
-    SWAPPED=1
+# A failed swap must abort (not report success): the only copy of the
+# previous version is inside $STAGING, which cleanup would delete.
+if ! mv "$STAGING/$APP_NAME.app" "$DESTINATION"; then
+    printf 'error: could not move the new app into place\n' >&2
+    exit 1
 fi
-if (( SWAPPED == 1 )); then
-    if [[ ! -L "$DESKTOP_LINK" ]]; then
-        ln -s "$DESTINATION" "$DESKTOP_LINK"
-    fi
-    COMMITTED=1
+SWAPPED=1
+if [[ ! -L "$DESKTOP_LINK" ]]; then
+    ln -s "$DESTINATION" "$DESKTOP_LINK"
 fi
+COMMITTED=1
 printf 'Installed %s\nDesktop shortcut: %s\n' "$DESTINATION" "$DESKTOP_LINK"
