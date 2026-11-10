@@ -32,10 +32,12 @@ final class MetricsSampler {
     }
 
     /// Changes the cadence without discarding counters: the worker (and its
-    /// baselines) survives, only the timer is rescheduled.
+    /// baselines) survives, only the timer is rescheduled. While stopped the
+    /// cadence is still remembered so a later `start` picks it up.
     func updateInterval(_ seconds: TimeInterval) {
-        guard seconds.isFinite, seconds > 0, seconds != interval, timer != nil else { return }
+        guard seconds.isFinite, seconds > 0, seconds != interval else { return }
         interval = seconds
+        guard timer != nil else { return }
         timer?.setEventHandler {}
         timer?.cancel()
         timer = nil

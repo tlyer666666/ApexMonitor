@@ -25,10 +25,10 @@ final class NetworkPathMonitor {
 
     private static func describe(_ path: NWPath) -> String {
         if path.usesInterfaceType(.wifi) { return "Wi-Fi" }
-        if path.usesInterfaceType(.wiredEthernet) { return "有线" }
-        if path.usesInterfaceType(.cellular) { return "蜂窝" }
-        if path.usesInterfaceType(.loopback) { return "本机回环" }
-        return "其他接口"
+        if path.usesInterfaceType(.wiredEthernet) { return L10n.Details.wiredEthernet }
+        if path.usesInterfaceType(.cellular) { return L10n.Details.cellular }
+        if path.usesInterfaceType(.loopback) { return L10n.Details.loopback }
+        return L10n.Details.otherInterface
     }
 
     func cancel() {

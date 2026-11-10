@@ -98,6 +98,10 @@ public enum L10n {
         public static var connectionStatus: String { tr("连接状态", "Connection") }
         public static var online: String { tr("在线", "Online") }
         public static var offline: String { tr("离线", "Offline") }
+        public static var wiredEthernet: String { tr("有线", "Wired") }
+        public static var cellular: String { tr("蜂窝", "Cellular") }
+        public static var loopback: String { tr("本机回环", "Loopback") }
+        public static var otherInterface: String { tr("其他接口", "Other") }
         public static var interfaceDetails: String { tr("接口明细", "Interfaces") }
         public static var connected: String { tr("已连接", "Connected") }
         public static var disconnected: String { tr("未连接", "Disconnected") }

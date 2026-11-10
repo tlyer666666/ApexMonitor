@@ -35,7 +35,7 @@ Scripts/gui-harness.sh       # 用隔离的历史目录运行 GUI 实例
 ## 隐私与数据
 
 - 不请求管理员权限，不安装 helper 或系统扩展，不建立网络连接，不包含遥测，也不会把自己注册为开机启动项。
-- 历史保存在 `~/Library/Application Support/MacPulse/history-v1.json`，7 天后自动剪枝，删除该文件即清空。逐秒明细只存在内存中（最近约 2 小时），不写盘。
+- 历史保存在 `~/Library/Application Support/MacPulse/history-v1.json`，7 天后自动剪枝，删除该文件即清空。逐秒明细只存在内存中（最多 7200 个样本，1 秒档约 2 小时），不写盘。
 
 ## 指标口径与限制
 
