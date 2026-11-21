@@ -30,6 +30,18 @@ struct SamplingTests {
         let downLink = InterfaceDetail(name: "en1", isUp: false, isRunning: false, ipv4: [], ipv6: [])
         guard downLink.kind == .physical && !downLink.isConnected else { exit(1) }
         print("PASS: physical interfaces keep the connected/disconnected state")
+        // The detail list reads top-down: connected links, then the rest,
+        // with infrastructure trailing; enumeration order breaks ties.
+        let ordered = InterfaceDetail.displayOrder([
+            detail("lo0"),
+            detail("utun3"),
+            InterfaceDetail(name: "en1", isUp: false, isRunning: false, ipv4: [], ipv6: []),
+            detail("bridge0"),
+            detail("en0"),
+        ])
+        guard ordered.map(\.name) == ["en0", "en1", "bridge0", "utun3", "lo0"] else { exit(1) }
+        print("PASS: the interface list orders connected links first and trails infrastructure")
+
 
         let started = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)

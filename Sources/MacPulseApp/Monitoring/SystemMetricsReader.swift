@@ -33,6 +33,30 @@ struct InterfaceDetail: Sendable, Equatable, Identifiable {
     /// state: reporting lo0 as "connected" would be misleading.
     var isConnected: Bool { kind == .physical && isUp && isRunning }
     var isLinkState: Bool { kind == .physical }
+
+    /// Connected physical links first, then the remaining physical ones, then
+    /// infrastructure (bridges, tunnels, loopback) trailing. Ties keep the
+    /// getifaddrs enumeration order, so the list never shuffles on refresh.
+    static func displayOrder(_ interfaces: [InterfaceDetail]) -> [InterfaceDetail] {
+        func rank(_ detail: InterfaceDetail) -> Int {
+            if detail.kind == .physical && detail.isConnected { return 0 }
+            switch detail.kind {
+            case .physical: return 1
+            case .bridge: return 2
+            case .tunnel: return 3
+            case .loopback: return 4
+            }
+        }
+        let ranked = interfaces.enumerated().map { index, detail in
+            (index: index, detail: detail, rank: rank(detail))
+        }
+        return ranked
+            .sorted { left, right in
+                if left.rank != right.rank { return left.rank < right.rank }
+                return left.index < right.index
+            }
+            .map(\.detail)
+    }
 }
 
 struct SystemMetricsReader {

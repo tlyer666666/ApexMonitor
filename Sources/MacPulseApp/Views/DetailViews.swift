@@ -342,7 +342,7 @@ struct NetworkDetailView: View {
                             }
                             .padding(.vertical, 3)
                         }
-                        ForEach(store.interfaces) { interface in
+                        ForEach(InterfaceDetail.displayOrder(store.interfaces)) { interface in
                             InterfaceRow(
                                 interface: interface,
                                 runtime: store.interfaceRuntimeTotals[interface.name]
