@@ -327,6 +327,21 @@ struct NetworkDetailView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     } else {
+                        if let totals = store.runtimeTotals {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.turn.up.right.diamond")
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                Text(L10n.Details.runtimeTotals)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("↓ \(MetricsFormatter.bytes(totals.receivedBytes)) ↑ \(MetricsFormatter.bytes(totals.sentBytes))")
+                                    .font(.system(.caption, design: .rounded).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 3)
+                        }
                         ForEach(store.interfaces) { interface in
                             InterfaceRow(
                                 interface: interface,

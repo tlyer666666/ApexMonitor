@@ -107,6 +107,7 @@ public enum L10n {
         public static var loopback: String { tr("本机回环", "Loopback") }
         public static var otherInterface: String { tr("其他接口", "Other") }
         public static var interfaceDetails: String { tr("接口明细", "Interfaces") }
+        public static var runtimeTotals: String { tr("本次运行累计", "Since launch") }
         public static var connected: String { tr("已连接", "Connected") }
         public static var disconnected: String { tr("未连接", "Disconnected") }
         public static var cpuBreakdown: String { tr("处理器分解", "CPU Breakdown") }
@@ -127,6 +128,7 @@ public enum L10n {
         public static var intervalNote: String { tr("间隔越长越省电；历史图表仍按时间范围展示。", "Longer intervals save energy; charts still cover the selected range.") }
         public static var menuBar: String { tr("菜单栏", "Menu Bar") }
         public static var displayMode: String { tr("显示方式", "Display") }
+        public static var displayMetric: String { tr("显示指标", "Metric") }
         public static var textMode: String { tr("文本", "Text") }
         public static var graphMode: String { tr("迷你图", "Mini Graph") }
         public static var graphNote: String { tr("迷你图展示最近约 30 个采样点的 CPU 占用趋势。", "The mini graph shows the last ~30 CPU samples.") }

@@ -23,6 +23,11 @@ struct SettingsView: View {
                         Text(display.label).tag(display)
                     }
                 }
+                Picker(L10n.Settings.displayMetric, selection: $settings.menuBarMetric) {
+                    ForEach(MenuBarMetric.allCases, id: \.self) { metric in
+                        Text(metric.label).tag(metric)
+                    }
+                }
                 if settings.menuBarDisplay == .graph {
                     Text(L10n.Settings.graphNote)
                         .font(.caption)

@@ -162,19 +162,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
     }
 
-    private func refreshStatusBar(with snapshot: MetricsSnapshot?, display: MenuBarDisplay? = nil) {
+    private func refreshStatusBar(with snapshot: MetricsSnapshot?, display: MenuBarDisplay? = nil, metric: MenuBarMetric? = nil) {
         guard let button = statusItem.button else { return }
         // Subscribers must pass the newly published value: reading the
         // property during @Published's willSet phase returns the stale one.
+        let metric = metric ?? settings.menuBarMetric
         switch display ?? settings.menuBarDisplay {
         case .text:
             button.imagePosition = .noImage
             button.image = nil
-            button.title = snapshot.map {
-                "CPU \(MetricsFormatter.cpuPercent($0.cpuPercent))"
-            } ?? "CPU —"
+            button.title = snapshot.map { Self.badgeText(metric: metric, snapshot: $0) }
+                ?? "\(metric.badge) —"
         case .graph:
-            if let image = Self.menuBarGraph(from: store.recentCPUPercents()) {
+            if let image = Self.menuBarGraph(from: store.recentValues(metric.snapshotKeyPath),
+                                             percentDomain: metric.usesPercentDomain) {
                 button.imagePosition = .imageOnly
                 button.title = ""
                 button.image = image
@@ -183,21 +184,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // instead of an empty status item.
                 button.imagePosition = .noImage
                 button.image = nil
-                button.title = "CPU —"
+                button.title = "\(metric.badge) —"
             }
         }
     }
 
-    /// Renders recent CPU percentages as a template image so the menu bar
+    /// Text-mode content per metric; badges are fixed-width Latin
+    /// abbreviations because the status item has no room for full words.
+    private static func badgeText(metric: MenuBarMetric, snapshot: MetricsSnapshot) -> String {
+        let value: Double? = switch metric {
+        case .cpu: snapshot.cpuPercent
+        case .memory: snapshot.memoryPercent
+        case .disk: snapshot.diskReadBytesPerSecond
+        case .network: snapshot.networkReceiveBytesPerSecond
+        }
+        let rendered = metric.usesPercentDomain
+            ? MetricsFormatter.cpuPercent(value)
+            : MetricsFormatter.bytesPerSecond(value)
+        return "\(metric.badge) \(rendered)"
+    }
+
+    /// Renders recent metric samples as a template image so the menu bar
     /// graph adapts to light/dark and highlighted states automatically.
     /// Missing samples are dropped on purpose: at 30×14 px a rare gap is
     /// imperceptible, unlike in the popover sparkline which breaks lines.
-    private static func menuBarGraph(from values: [Double?]) -> NSImage? {
+    private static func menuBarGraph(from values: [Double?], percentDomain: Bool) -> NSImage? {
         let present = values.compactMap { value -> Double? in
             guard let value, value.isFinite else { return nil }
-            return min(max(value, 0), 100) / 100
+            return value
         }
         guard present.count >= 2 else { return nil }
+        let peak = max(present.max() ?? 1, percentDomain ? 100 : 1)
         let tail = present.suffix(30)
 
         let points = CGFloat(30)
@@ -211,10 +228,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let usable = height - 2
         let path = NSBezierPath()
         path.lineWidth = 1
-        path.move(to: NSPoint(x: 0, y: baseline - CGFloat(tail.first ?? 0) * usable))
+        path.move(to: NSPoint(x: 0, y: baseline - CGFloat((tail.first ?? 0) / peak) * usable))
         for (index, value) in tail.enumerated().dropFirst() {
             let x = CGFloat(index) * step
-            let y = baseline - CGFloat(value) * usable
+            let y = baseline - CGFloat(value / peak) * usable
             path.line(to: NSPoint(x: x, y: y))
         }
         path.stroke()
@@ -231,6 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             settings.$menuBarDisplay.dropFirst().sink { [weak self] display in
                 guard let self else { return }
                 self.refreshStatusBar(with: self.store.snapshot, display: display)
+            },
+            settings.$menuBarMetric.dropFirst().sink { [weak self] metric in
+                guard let self else { return }
+                self.refreshStatusBar(with: self.store.snapshot, metric: metric)
             },
             settings.$appearance.dropFirst().sink { appearance in
                 NSApp.appearance = appearance.nsAppearance

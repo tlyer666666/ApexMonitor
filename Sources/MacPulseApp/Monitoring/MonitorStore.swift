@@ -8,6 +8,9 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var volumes: [VolumeSpace] = []
     @Published private(set) var interfaces: [InterfaceDetail] = []
     @Published private(set) var interfaceRuntimeTotals: [String: NetworkInterfaceCounters] = [:]
+    /// Cumulative since-launch traffic across all interfaces, including the
+    /// contributions of interfaces that have left (kept monotonic).
+    @Published private(set) var runtimeTotals: NetworkCounterTotals?
     @Published private(set) var pathStatus: NetworkPathStatus?
     @Published private(set) var loadAverage: LoadAverage?
     @Published private(set) var historyError: String?
@@ -62,10 +65,11 @@ final class MonitorStore: ObservableObject {
                 self.historyRevision &+= 1
             }
         }
-        sampler.start { [weak self] snapshot, totals, date in
+        sampler.start { [weak self] snapshot, counterTotals, perInterface, date in
             guard let self, self.isRunning, self.lifecycle == token else { return }
             let completed = self.history.record(snapshot, at: date)
-            self.interfaceRuntimeTotals = totals
+            self.interfaceRuntimeTotals = perInterface
+            self.runtimeTotals = counterTotals
             self.historyRevision &+= 1
             self.lastUpdateDate = date
             self.snapshot = snapshot
@@ -87,9 +91,11 @@ final class MonitorStore: ObservableObject {
         }
     }
 
-    /// Recent CPU percentages (oldest first) for the menu bar mini-graph.
-    func recentCPUPercents(limit: Int = 30) -> [Double?] {
-        Array(history.recentSamples.suffix(limit).map { $0.snapshot.cpuPercent })
+    /// Recent samples (oldest first) along one metric's key path — the menu
+    /// bar passes the key path for its chosen metric so this store stays free
+    /// of App-layer settings types.
+    func recentValues(_ keyPath: KeyPath<MetricsSnapshot, Double?>, limit: Int = 30) -> [Double?] {
+        Array(history.recentSamples.suffix(limit).map { $0.snapshot[keyPath: keyPath] })
     }
 
     /// Applies a new sampling cadence without dropping counters or baselines.

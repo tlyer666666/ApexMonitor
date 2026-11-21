@@ -5,7 +5,7 @@ final class MetricsSampler {
     typealias Reader = @Sendable (NetworkCounterTotals?) -> RawMetricsSample
     typealias Interfaces = @Sendable () -> [String: NetworkInterfaceCounters]?
 
-    typealias Deliver = @MainActor (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) -> Void
+    typealias Deliver = @MainActor (MetricsSnapshot, NetworkCounterTotals?, [String: NetworkInterfaceCounters], Date) -> Void
 
     private let queue = DispatchQueue(label: "com.macpulse.metrics", qos: .utility)
     private let read: Reader
@@ -25,7 +25,7 @@ final class MetricsSampler {
         self.interfaces = interfaces
     }
 
-    func start(deliver: @escaping @MainActor (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) -> Void) {
+    func start(deliver: @escaping @MainActor (MetricsSnapshot, NetworkCounterTotals?, [String: NetworkInterfaceCounters], Date) -> Void) {
         guard timer == nil else { return }
         self.deliver = deliver
         spawnTimer()
@@ -65,7 +65,7 @@ final class MetricsSampler {
             let result = worker.sample(configuredInterval: cadence)
             Task { @MainActor [weak self] in
                 guard let self, self.generation == token, self.timer != nil else { return }
-                self.deliver?(result.0, result.1, result.2)
+                self.deliver?(result.0, result.1, result.2, result.3)
             }
         }
         self.timer = timer
@@ -89,7 +89,7 @@ private final class SamplingWorker: @unchecked Sendable {
         self.interfaces = interfaces
     }
 
-    func sample(configuredInterval: TimeInterval) -> (MetricsSnapshot, [String: NetworkInterfaceCounters], Date) {
+    func sample(configuredInterval: TimeInterval) -> (MetricsSnapshot, NetworkCounterTotals?, [String: NetworkInterfaceCounters], Date) {
         // The validity bound follows the configured cadence (twice the cadence,
         // at least the historical 5 seconds) so the 5-second setting survives
         // scheduler jitter while real gaps still rebuild the baseline.
@@ -112,9 +112,10 @@ private final class SamplingWorker: @unchecked Sendable {
             totals = nil
         }
         // Unclassifiable counter deltas (reset or out-of-band wrap) stay
-        // unknown for this interval instead of reading as measured zero.
+        // unknown for this interval instead of reading as measured zero; the
+        // delivered totals keep their monotonic cumulative value.
         let usableTotals = totals.flatMap { $0.hasUncertainDelta ? nil : $0 }
         let snapshot = calculator.update(read(usableTotals))
-        return (snapshot, network.runtimeTotalsByInterface(), date)
+        return (snapshot, totals, network.runtimeTotalsByInterface(), date)
     }
 }

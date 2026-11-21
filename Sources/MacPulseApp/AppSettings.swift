@@ -14,6 +14,51 @@ enum MenuBarDisplay: String, CaseIterable {
     }
 }
 
+/// Which metric the menu bar item presents in text mode (and the mini graph
+/// follows). The short badges stay fixed-width Latin abbreviations: the
+/// status item has no room for localized full words.
+enum MenuBarMetric: String, CaseIterable {
+    case cpu
+    case memory
+    case disk
+    case network
+
+    var label: String {
+        switch self {
+        case .cpu: return L10n.tr("处理器", "CPU")
+        case .memory: return L10n.tr("内存", "Memory")
+        case .disk: return L10n.tr("磁盘", "Disk")
+        case .network: return L10n.tr("网络", "Network")
+        }
+    }
+
+    /// Text-mode badge: values render after it ("CPU 42%").
+    var badge: String {
+        switch self {
+        case .cpu: return "CPU"
+        case .memory: return "MEM"
+        case .disk: return "DSK"
+        case .network: return "NET"
+        }
+    }
+
+    /// Percent metrics share a fixed 0–100 domain; rate metrics scale to
+    /// their own peak, exactly like the popover sparklines.
+    var usesPercentDomain: Bool {
+        self == .cpu || self == .memory
+    }
+
+    /// The snapshot field this metric reads.
+    var snapshotKeyPath: KeyPath<MetricsSnapshot, Double?> {
+        switch self {
+        case .cpu: \.cpuPercent
+        case .memory: \.memoryPercent
+        case .disk: \.diskReadBytesPerSecond
+        case .network: \.networkReceiveBytesPerSecond
+        }
+    }
+}
+
 enum AppAppearance: String, CaseIterable {
     case system
     case light
@@ -48,6 +93,9 @@ final class AppSettings: ObservableObject {
     @Published var menuBarDisplay: MenuBarDisplay {
         didSet { defaults.set(menuBarDisplay.rawValue, forKey: Self.menuBarDisplayKey) }
     }
+    @Published var menuBarMetric: MenuBarMetric {
+        didSet { defaults.set(menuBarMetric.rawValue, forKey: Self.menuBarMetricKey) }
+    }
     @Published var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: Self.appearanceKey) }
     }
@@ -56,6 +104,7 @@ final class AppSettings: ObservableObject {
 
     static let updateIntervalKey = "updateInterval"
     static let menuBarDisplayKey = "menuBarDisplay"
+    static let menuBarMetricKey = "menuBarMetric"
     static let appearanceKey = "appearance"
     private static let legacyAppLanguageKey = "appLanguage"
 
@@ -64,6 +113,7 @@ final class AppSettings: ObservableObject {
         let storedInterval = defaults.double(forKey: Self.updateIntervalKey)
         updateInterval = [1.0, 2.0, 5.0].contains(storedInterval) ? storedInterval : 1.0
         menuBarDisplay = MenuBarDisplay(rawValue: defaults.string(forKey: Self.menuBarDisplayKey) ?? "") ?? .text
+        menuBarMetric = MenuBarMetric(rawValue: defaults.string(forKey: Self.menuBarMetricKey) ?? "") ?? .cpu
         appearance = AppAppearance(rawValue: defaults.string(forKey: Self.appearanceKey) ?? "") ?? .system
         defaults.removeObject(forKey: Self.legacyAppLanguageKey)
     }

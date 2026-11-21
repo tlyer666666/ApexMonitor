@@ -17,7 +17,7 @@ struct SamplingTests {
             return raw()
         }, interfaces: { nil })
         var deliveries = 0
-        sampler.start { _, _, _ in deliveries += 1 }
+        sampler.start { _, _, _, _ in deliveries += 1 }
         let entered = await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 continuation.resume(returning: started.wait(timeout: .now() + 3) == .success)
@@ -36,7 +36,7 @@ struct SamplingTests {
         weak var reference: MetricsSampler?
         var temporary: MetricsSampler? = MetricsSampler(interval: 60, read: { _ in raw() }, interfaces: { nil })
         reference = temporary
-        temporary?.start { _, _, _ in }
+        temporary?.start { _, _, _, _ in }
         temporary = nil
         guard reference == nil else { exit(1) }
         print("PASS: releasing the main sampler cancels its timer")
