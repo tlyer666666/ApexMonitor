@@ -36,6 +36,27 @@ public enum MetricsFormatter {
         return "\(bytes(usedBytes)) / \(bytes(totalBytes))"
     }
 
+    /// Start/end clock labels under a chart. Windows crossing midnight carry
+    /// the date on both ends (a bare time next to a dated one would read
+    /// ambiguously); same-day windows show times only. `timeZone` defaults
+    /// to the user's clock; tests pin a fixed zone.
+    public static func chartTimeRange(start: Date, end: Date, timeZone: TimeZone = .current) -> (start: String, end: String)? {
+        guard start <= end else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let crossesMidnight = !calendar.isDate(start, inSameDayAs: end)
+        let time = DateFormatter()
+        time.timeZone = timeZone
+        time.dateFormat = "HH:mm"
+        let dayTime = DateFormatter()
+        dayTime.timeZone = timeZone
+        dayTime.dateFormat = "M/d HH:mm"
+        let format = { (date: Date) -> String in
+            crossesMidnight ? dayTime.string(from: date) : time.string(from: date)
+        }
+        return (format(start), format(end))
+    }
+
     public static func bytesPerSecond(_ value: Double?) -> String {
         guard let value, value.isFinite, value >= 0 else { return "—" }
         if value < 1_024 { return String(format: "%.0f B/s", value) }

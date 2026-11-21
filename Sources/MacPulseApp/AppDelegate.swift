@@ -12,10 +12,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var snapshotObserver: AnyCancellable?
+    private var navigationObserver: AnyCancellable?
     private var settingsObservers: [AnyCancellable] = []
 
     init(historyFile: HistoryFileStore = .defaultStore(), defaults: UserDefaults = .standard) {
-        store = MonitorStore(historyFile: historyFile)
+        store = MonitorStore(historyFile: historyFile, defaults: defaults)
         settings = AppSettings(defaults: defaults)
         super.init()
     }
@@ -149,6 +150,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .sink { [weak self] snapshot in
                 guard let self else { return }
                 self.refreshStatusBar(with: snapshot)
+            }
+        // The navigation title lingers on the detail page after popping back
+        // to the overview; keep the window title tied to the path instead.
+        navigationObserver = store.$navigationPath
+            .receive(on: RunLoop.main)
+            .sink { [weak self] path in
+                guard let self, let window = self.dashboardWindow else { return }
+                window.title = path.last.map { "MacPulse · \($0.title)" }
+                    ?? "MacPulse · \(L10n.Dashboard.title)"
             }
     }
 

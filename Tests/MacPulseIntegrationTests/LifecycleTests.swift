@@ -82,11 +82,29 @@ struct LifecycleTests {
         check(store.processSummary == nil, "store remains empty after immediately closing details")
     }
 
+    @MainActor static func testStoreRemembersRangesAcrossInstances() async {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macpulse-lifecycle-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "MacPulseRangeTest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = MonitorStore(historyFile: HistoryFileStore(directory: directory), defaults: defaults)
+        check(first.selectedRange == .fifteenMinutes, "an unknown stored range falls back to fifteen minutes")
+        first.selectedRange = .oneDay
+        first.trafficRange = .oneHour
+        let second = MonitorStore(historyFile: HistoryFileStore(directory: directory), defaults: defaults)
+        check(second.selectedRange == .oneDay && second.trafficRange == .oneHour,
+              "the chosen dashboard and traffic ranges survive a relaunch")
+    }
+
     @MainActor static func main() async {
         await testSwitchDiscardsPreviousResult()
         await testStopDiscardsPendingResult()
         await testSamplerDoesNotRetainItself()
         await testStoreRejectsResultAfterClose()
+        await testStoreRemembersRangesAcrossInstances()
         exit(failures == 0 ? 0 : 1)
     }
 }

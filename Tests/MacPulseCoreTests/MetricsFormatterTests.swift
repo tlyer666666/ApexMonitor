@@ -40,9 +40,27 @@ func testPercentFormattingRejectsInvalidValues() {
     expect(MetricsFormatter.cpuPercent(Double.greatestFiniteMagnitude) == "—", "huge finite CPU values are unavailable")
 }
 
+func testChartTimeRangeLabelsFollowLocalClockAndCrossDays() {
+    let zone = TimeZone(identifier: "UTC")!
+    let base = Date(timeIntervalSince1970: 1_764_000_000) // 2025-11-24 16:00 UTC
+    let sameDay = MetricsFormatter.chartTimeRange(start: base, end: base.addingTimeInterval(900), timeZone: zone)
+    expect(sameDay?.start == "16:00" && sameDay?.end == "16:15",
+           "same-day chart labels show clock times only")
+    let crossing = MetricsFormatter.chartTimeRange(
+        start: base.addingTimeInterval(28_200),  // 23:50 same evening
+        end: base.addingTimeInterval(29_100),    // 00:05 next day
+        timeZone: zone
+    )
+    expect(crossing?.start == "11/24 23:50" && crossing?.end == "11/25 00:05",
+           "labels crossing midnight carry the date")
+    expect(MetricsFormatter.chartTimeRange(start: base.addingTimeInterval(10), end: base, timeZone: zone) == nil,
+           "an inverted range produces no labels")
+}
+
 func runMetricsFormatterTests() {
     testPercentFormattingRejectsInvalidValues()
     testFormatsMetricUnitsAndUnavailableValues()
     testFormatsMemoryUsedAndTotalTogether()
     testFormatsCoverageDurationAndDoubleByteTotals()
+    testChartTimeRangeLabelsFollowLocalClockAndCrossDays()
 }

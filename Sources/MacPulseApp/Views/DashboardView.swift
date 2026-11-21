@@ -95,13 +95,15 @@ struct DashboardView: View {
                 Button {
                     store.navigationPath.append(category)
                 } label: {
-                    CurrentMetricCard(
-                        title: category.title,
-                        symbol: category.symbol,
-                        value: category.currentValue(metrics),
-                        detail: cardDetail(for: category),
-                        tint: category.tint
-                    )
+                    HoverableCard(tint: category.tint) {
+                        CurrentMetricCard(
+                            title: category.title,
+                            symbol: category.symbol,
+                            value: category.currentValue(metrics),
+                            detail: cardDetail(for: category),
+                            tint: category.tint
+                        )
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L10n.Dashboard.detailNavigation(category.title))

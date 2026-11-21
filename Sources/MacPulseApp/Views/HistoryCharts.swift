@@ -163,6 +163,18 @@ struct HistoryChartCard: View {
                 }
             }
 
+            if let firstDate = points.first?.date, let lastDate = points.last?.date,
+               let labels = MetricsFormatter.chartTimeRange(start: firstDate, end: lastDate) {
+                HStack {
+                    Text(labels.start)
+                    Spacer()
+                    Text(labels.end)
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            }
+
             if metrics.count > 1 {
                 HStack(spacing: 12) {
                     ForEach(metrics.indices, id: \.self) { index in
@@ -210,6 +222,7 @@ struct CurrentMetricCard: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")

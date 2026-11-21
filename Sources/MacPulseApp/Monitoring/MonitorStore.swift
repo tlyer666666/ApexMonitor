@@ -15,10 +15,18 @@ final class MonitorStore: ObservableObject {
     /// Mirrors the configured cadence so views can describe it truthfully.
     @Published private(set) var updateInterval: Double = 1
     @Published var navigationPath: [MetricCategory] = []
-    @Published var selectedRange: HistoryRange = .fifteenMinutes
+    @Published var selectedRange: HistoryRange {
+        didSet { defaults.set(selectedRange.rawValue, forKey: Self.selectedRangeKey) }
+    }
     /// Lives here (not in view @State) so the choice survives navigation.
-    @Published var trafficRange: HistoryRange = .fifteenMinutes
+    @Published var trafficRange: HistoryRange {
+        didSet { defaults.set(trafficRange.rawValue, forKey: Self.trafficRangeKey) }
+    }
     @Published private var historyRevision: UInt64 = 0
+
+    private let defaults: UserDefaults
+    private static let selectedRangeKey = "dashboardRange"
+    private static let trafficRangeKey = "trafficRange"
 
     private let sampler = MetricsSampler()
     private let repository: HistoryRepository
@@ -34,8 +42,11 @@ final class MonitorStore: ObservableObject {
     /// each other.
     private var seriesCache: [HistoryRange: (revision: UInt64, second: Int, value: MetricSeries)] = [:]
 
-    init(historyFile: HistoryFileStore = .defaultStore()) {
+    init(historyFile: HistoryFileStore = .defaultStore(), defaults: UserDefaults = .standard) {
         repository = HistoryRepository(file: historyFile)
+        self.defaults = defaults
+        selectedRange = HistoryRange(rawValue: defaults.string(forKey: Self.selectedRangeKey) ?? "") ?? .fifteenMinutes
+        trafficRange = HistoryRange(rawValue: defaults.string(forKey: Self.trafficRangeKey) ?? "") ?? .fifteenMinutes
     }
 
     func start(interval: TimeInterval = 1) {
