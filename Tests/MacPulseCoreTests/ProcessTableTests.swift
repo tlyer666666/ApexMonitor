@@ -160,6 +160,65 @@ func testOptionalStartIdentityPreservesLegacyCallsButRebaselinesTransitions() {
            "losing a start identity does not compare counters across unknown incarnations")
 }
 
+func testProcessSummaryDisplayOrderSortsByColumnWithStableTies() {
+    func stat(_ pid: Int32, _ name: String, cpu: Double?, memory: UInt64) -> ProcessStat {
+        ProcessStat(pid: pid, name: name, cpuPercent: cpu, residentBytes: memory)
+    }
+    let summary = ProcessSummary(
+        processCount: 12,
+        topByCPU: [
+            stat(2, "browser", cpu: 50, memory: 100),
+            stat(1, "app", cpu: 10, memory: 900),
+            stat(3, "helper", cpu: nil, memory: 50)
+        ],
+        topByMemory: [
+            stat(1, "app", cpu: 10, memory: 900),
+            stat(4, "daemon", cpu: 70, memory: 400),
+            stat(2, "browser", cpu: 50, memory: 100)
+        ]
+    )
+
+    let memoryDescending = summary.displayOrder(ProcessSortOrder(column: .memory, ascending: false)).map(\.pid)
+    expect(memoryDescending == [1, 4, 2, 3], "memory descending dedupes the union and ranks high to low")
+    let memoryAscending = summary.displayOrder(ProcessSortOrder(column: .memory, ascending: true)).map(\.pid)
+    expect(memoryAscending == [3, 2, 4, 1], "memory ascending reverses the ranking")
+
+    let cpuDescending = summary.displayOrder(ProcessSortOrder(column: .cpu, ascending: false)).map(\.pid)
+    expect(cpuDescending == [4, 2, 1, 3], "cpu descending ranks known values first and unknown last")
+    let cpuAscending = summary.displayOrder(ProcessSortOrder(column: .cpu, ascending: true)).map(\.pid)
+    expect(cpuAscending == [1, 2, 4, 3], "cpu ascending keeps unknown values last as well")
+
+    let nameAscending = summary.displayOrder(ProcessSortOrder(column: .name, ascending: true)).map(\.pid)
+    expect(nameAscending == [1, 2, 4, 3], "name ascending sorts alphabetically (app, browser, daemon, helper)")
+}
+
+func testProcessSummaryDisplayOrderKeepsMemoryDefaultEqualToTopByMemory() {
+    var table = ProcessTable()
+    var samples: [RawProcessSample] = []
+    for index in 0..<12 {
+        samples.append(RawProcessSample(
+            pid: Int32(600 + index),
+            name: "proc\(index)",
+            residentBytes: UInt64(1_000 + index * 500),
+            cpuTimeNanoseconds: UInt64(index) * 40_000_000,
+            startIdentity: ProcessStartIdentity(seconds: 100, microseconds: 0)
+        ))
+    }
+    _ = table.update(samples, at: 10)
+    let summary = table.update(samples.map {
+        RawProcessSample(pid: $0.pid, name: $0.name, residentBytes: $0.residentBytes,
+                         cpuTimeNanoseconds: $0.cpuTimeNanoseconds + 30_000_000 + UInt64($0.pid - 600) * 20_000_000,
+                         startIdentity: $0.startIdentity)
+    }, at: 11)
+
+    let displayed = summary.displayOrder(ProcessSortOrder(column: .memory, ascending: false))
+    expect(displayed == summary.topByMemory,
+           "the memory page's default display order is exactly the memory ranking")
+    let byCPU = summary.displayOrder(ProcessSortOrder(column: .cpu, ascending: false))
+    expect(Array(byCPU.prefix(ProcessTable.topLimit)) == summary.topByCPU,
+           "switching to CPU ranking reproduces the CPU top list")
+}
+
 func runProcessTableTests() {
     testFirstProcessSampleRanksByMemoryWithoutInventingCPU()
     testSecondProcessSampleComputesCPUPercentFromWallTime()
@@ -168,4 +227,6 @@ func runProcessTableTests() {
     testChangedStartIdentityRebaselinesEvenWhenPIDNameAndCounterLookContinuous()
     testStableIdentityCounterResetAndUptimeRollbackRebaseline()
     testOptionalStartIdentityPreservesLegacyCallsButRebaselinesTransitions()
+    testProcessSummaryDisplayOrderSortsByColumnWithStableTies()
+    testProcessSummaryDisplayOrderKeepsMemoryDefaultEqualToTopByMemory()
 }

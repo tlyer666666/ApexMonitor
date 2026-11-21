@@ -46,6 +46,73 @@ public struct ProcessSummary: Sendable, Equatable {
     public let topByMemory: [ProcessStat]
 }
 
+/// Column the process list can be sorted by; value columns start high-to-low.
+public enum ProcessSortColumn: String, CaseIterable, Sendable {
+    case name
+    case memory
+    case cpu
+}
+
+public struct ProcessSortOrder: Sendable, Equatable {
+    public let column: ProcessSortColumn
+    public let ascending: Bool
+
+    public init(column: ProcessSortColumn, ascending: Bool = false) {
+        self.column = column
+        self.ascending = ascending
+    }
+
+    /// The default cadence per column: values rank high-to-low, names A-to-Z.
+    public init(column: ProcessSortColumn) {
+        self.init(column: column, ascending: column == .name)
+    }
+}
+
+extension ProcessSummary {
+    /// The union of both ranked lists, deduplicated by PID and ordered for
+    /// display. Unknown CPU values never masquerade as zero: they stay last
+    /// in both directions. Ties fall back to ascending PID so the order is
+    /// stable across refreshes.
+    public func displayOrder(_ order: ProcessSortOrder) -> [ProcessStat] {
+        var seen = Set<Int32>()
+        var union: [ProcessStat] = []
+        union.reserveCapacity(topByCPU.count + topByMemory.count)
+        for stat in topByCPU + topByMemory where seen.insert(stat.pid).inserted {
+            union.append(stat)
+        }
+
+        func isBefore(_ lhs: ProcessStat, _ rhs: ProcessStat) -> Bool {
+            switch order.column {
+            case .name:
+                let left = lhs.name.lowercased()
+                let right = rhs.name.lowercased()
+                if left != right { return order.ascending ? left < right : left > right }
+                return lhs.pid < rhs.pid
+            case .memory:
+                if lhs.residentBytes != rhs.residentBytes {
+                    return order.ascending
+                        ? lhs.residentBytes < rhs.residentBytes
+                        : lhs.residentBytes > rhs.residentBytes
+                }
+                return lhs.pid < rhs.pid
+            case .cpu:
+                switch (lhs.cpuPercent, rhs.cpuPercent) {
+                case (let left?, let right?):
+                    if left != right { return order.ascending ? left < right : left > right }
+                    return lhs.pid < rhs.pid
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                default:
+                    return lhs.pid < rhs.pid
+                }
+            }
+        }
+        return union.sorted(by: isBefore)
+    }
+}
+
 public struct ProcessTable {
     /// Top entries within the readable sample, not a census of all system processes.
     public static let topLimit = 10

@@ -69,8 +69,12 @@ public enum L10n {
         public static var used: String { tr("已用", "Used") }
         public static var available: String { tr("可用", "Available") }
         public static var total: String { tr("总量", "Total") }
-        public static var topProcessesByMemory: String { tr("进程占用 · Top 10（按内存）", "Top Processes · 10 by Memory") }
-        public static var topProcessesByCPU: String { tr("进程占用 · Top 10（按 CPU）", "Top Processes · 10 by CPU") }
+        public static func topProcessesBy(_ column: String) -> String {
+            tr("进程占用 · Top 10（按\(column)）", "Top Processes · 10 by \(column)")
+        }
+        public static func sortByColumn(_ column: String) -> String {
+            tr("按\(column)排序", "Sort by \(column)")
+        }
         public static var processHeader: String { tr("进程", "Process") }
         public static var memoryColumn: String { tr("内存", "Memory") }
         public static var cpuColumn: String { tr("CPU", "CPU") }

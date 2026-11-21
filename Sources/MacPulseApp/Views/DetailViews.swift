@@ -105,19 +105,56 @@ struct ProcessListRow: View {
 }
 
 struct ProcessListHeader: View {
+    @Binding var order: ProcessSortOrder
+
     var body: some View {
         HStack(spacing: 10) {
             Text("#").frame(minWidth: 18, alignment: .leading)
-            Text(L10n.Details.processHeader).font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(L10n.Details.memoryColumn).font(.caption).foregroundStyle(.secondary).frame(minWidth: 84, alignment: .trailing)
-            Text(L10n.Details.cpuColumn).font(.caption).foregroundStyle(.secondary).frame(minWidth: 56, alignment: .trailing)
+            sortButton(L10n.Details.processHeader, column: .name)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            sortButton(L10n.Details.memoryColumn, column: .memory)
+                .frame(minWidth: 84, alignment: .trailing)
+            sortButton(L10n.Details.cpuColumn, column: .cpu)
+                .frame(minWidth: 56, alignment: .trailing)
         }
+    }
+
+    /// Clicking a column sorts by it (values high-to-low first); clicking the
+    /// active column again flips the direction.
+    private func sortButton(_ title: String, column: ProcessSortColumn) -> some View {
+        let active = order.column == column
+        return Button {
+            if active {
+                order = ProcessSortOrder(column: column, ascending: !order.ascending)
+            } else {
+                order = ProcessSortOrder(column: column)
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Text(title)
+                if active {
+                    Text(order.ascending ? "↑" : "↓")
+                        .font(.caption2)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(active ? Color.accentColor : Color.secondary)
+        .accessibilityLabel(L10n.Details.sortByColumn(title))
+    }
+}
+
+private func columnTitle(_ column: ProcessSortColumn) -> String {
+    switch column {
+    case .name: return L10n.Details.processHeader
+    case .memory: return L10n.Details.memoryColumn
+    case .cpu: return L10n.Details.cpuColumn
     }
 }
 
 struct MemoryDetailView: View {
     @ObservedObject var store: MonitorStore
+    @State private var order = ProcessSortOrder(column: .memory)
 
     private var snapshot: MetricsSnapshot? { store.snapshot }
 
@@ -136,10 +173,11 @@ struct MemoryDetailView: View {
                     }
                 }
 
-                DetailCard(title: L10n.Details.topProcessesByMemory) {
+                DetailCard(title: L10n.Details.topProcessesBy(columnTitle(order.column))) {
                     if let summary = store.processSummary, !summary.topByMemory.isEmpty {
-                        ProcessListHeader()
-                        ForEach(Array(summary.topByMemory.enumerated()), id: \.element.pid) { index, stat in
+                        ProcessListHeader(order: $order)
+                        let rows = Array(summary.displayOrder(order).prefix(ProcessTable.topLimit).enumerated())
+                        ForEach(rows, id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
                         Text(L10n.Details.readableCount(summary.processCount))
@@ -337,6 +375,7 @@ struct InterfaceRow: View {
 
 struct CPUDetailView: View {
     @ObservedObject var store: MonitorStore
+    @State private var order = ProcessSortOrder(column: .cpu)
 
     private var snapshot: MetricsSnapshot? { store.snapshot }
 
@@ -367,10 +406,11 @@ struct CPUDetailView: View {
                     }
                 }
 
-                DetailCard(title: L10n.Details.topProcessesByCPU) {
+                DetailCard(title: L10n.Details.topProcessesBy(columnTitle(order.column))) {
                     if let summary = store.processSummary, !summary.topByCPU.isEmpty {
-                        ProcessListHeader()
-                        ForEach(Array(summary.topByCPU.enumerated()), id: \.element.pid) { index, stat in
+                        ProcessListHeader(order: $order)
+                        let rows = Array(summary.displayOrder(order).prefix(ProcessTable.topLimit).enumerated())
+                        ForEach(rows, id: \.element.pid) { index, stat in
                             ProcessListRow(rank: index + 1, stat: stat)
                         }
                         Text(L10n.Details.readableCount(summary.processCount) + " · " + L10n.Details.singleCoreNote)
