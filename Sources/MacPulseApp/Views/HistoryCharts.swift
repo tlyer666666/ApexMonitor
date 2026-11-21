@@ -149,17 +149,25 @@ struct HistoryChartCard: View {
                 }
             }
 
-            SeriesChart(
-                series: chartSeries,
-                tint: tint,
-                percentDomain: percentDomain
-            )
-            .frame(height: DesignSystem.Chart.height)
-            .overlay {
-                if metrics.allSatisfy({ metric in
-                    points.allSatisfy { $0[keyPath: metric.keyPath] == nil }
-                }) {
-                    CollectingPlaceholder(text: L10n.Charts.establishingBaseline)
+            if metrics.count > 1 {
+                // Two directions rarely share a scale: a single peak-dominated
+                // axis flattens the quieter one onto the floor, so each gets
+                // its own sub-chart and its own honest domain.
+                HStack(alignment: .top, spacing: 14) {
+                    subChart(index: 0, sampled: sampled)
+                    subChart(index: 1, sampled: sampled)
+                }
+            } else {
+                SeriesChart(
+                    series: [chartSeries[0]],
+                    tint: tint,
+                    percentDomain: percentDomain
+                )
+                .frame(height: DesignSystem.Chart.height)
+                .overlay {
+                    if points.allSatisfy({ $0[keyPath: metrics[0].keyPath] == nil }) {
+                        CollectingPlaceholder(text: L10n.Charts.establishingBaseline)
+                    }
                 }
             }
 
@@ -193,6 +201,37 @@ struct HistoryChartCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// One direction of a dual card: its own y-domain, chart and name caption.
+    private func subChart(index: Int, sampled: [Int]) -> some View {
+        let metric = metrics[index]
+        let subSampled = HistoryAnalyzer.downsampleIndices(count: points.count, maxPoints: 300)
+        let dates = subSampled.map { points[$0].date }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Circle().fill(index == 0 ? tint : tint.opacity(0.55)).frame(width: 7, height: 7)
+                Text(metric.name).font(.caption).foregroundStyle(.secondary)
+            }
+            SeriesChart(
+                series: [SeriesChart.Series(
+                    dates: dates,
+                    values: subSampled.map { points[$0][keyPath: metric.keyPath] },
+                    opacity: index == 0 ? 0.9 : 0.7,
+                    fillsArea: index == 0
+                )],
+                tint: tint,
+                percentDomain: percentDomain
+            )
+            .frame(height: DesignSystem.Chart.height)
+            .overlay {
+                if points.allSatisfy({ $0[keyPath: metric.keyPath] == nil }) {
+                    CollectingPlaceholder(text: L10n.Charts.establishingBaseline)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
     }
 }
 

@@ -252,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.title = L10n.Settings.windowTitle
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("MacPulseSettings")
         window.center()
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
@@ -283,6 +284,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.minSize = NSSize(width: 780, height: 680)
         window.center()
         window.isReleasedWhenClosed = false
+        // Remember where the user put the panel across launches.
+        window.setFrameAutosaveName("MacPulseDashboard")
         window.delegate = self
         dashboardWindow = window
         window.makeKeyAndOrderFront(nil)
