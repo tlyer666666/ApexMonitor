@@ -13,6 +13,10 @@ struct MetricSeries: Sendable {
 
 struct HistoryRecorder {
     static let recentSampleLimit = 7_200
+    /// Wall-clock steps smaller than this are NTP noise: the sample is
+    /// clamped to the previous record time instead of discarding the whole
+    /// detail buffer. Larger steps are real rollbacks (see `record`).
+    static let smallRollbackTolerance: TimeInterval = 2
     /// Sorted by minuteStart; immutable between restores.
     private var restored: [MinuteBucket] = []
     /// Sorted by minuteStart; completed and flushed minutes of this session.
@@ -32,26 +36,34 @@ struct HistoryRecorder {
 
     @discardableResult
     mutating func record(_ snapshot: MetricsSnapshot, at date: Date) -> Bool {
+        var effective = date
         if let previousDate, date < previousDate {
-            if let flushed = aggregator.flush(at: previousDate) {
+            if previousDate.timeIntervalSince(date) <= Self.smallRollbackTolerance {
+                // Small NTP step: clamp instead of throwing away every detail
+                // sample. The duration metadata drives traffic integration,
+                // so at most this shifts one minute's span by the step size.
+                effective = previousDate
+            } else if let flushed = aggregator.flush() {
                 insert(flushed)
                 nonDetailMinutes.insert(flushed.minuteStart)
+                recentSamples.removeAll(keepingCapacity: true)
+            } else {
+                recentSamples.removeAll(keepingCapacity: true)
             }
-            recentSamples.removeAll(keepingCapacity: true)
         }
-        previousDate = date
-        recentSamples.append(TimestampedSnapshot(date: date, snapshot: snapshot))
+        previousDate = effective
+        recentSamples.append(TimestampedSnapshot(date: effective, snapshot: snapshot))
         if recentSamples.count > Self.recentSampleLimit {
             recentSamples.removeFirst(recentSamples.count - Self.recentSampleLimit)
         }
-        guard let completed = aggregator.append(snapshot, at: date) else { return false }
+        guard let completed = aggregator.append(snapshot, at: effective) else { return false }
         insert(completed)
-        prune(around: date)
+        prune(around: effective)
         return true
     }
 
-    mutating func flush(at date: Date) {
-        if let partial = aggregator.flush(at: date) {
+    mutating func flush() {
+        if let partial = aggregator.flush() {
             insert(partial)
         }
     }

@@ -180,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// Renders recent CPU percentages as a template image so the menu bar
     /// graph adapts to light/dark and highlighted states automatically.
+    /// Missing samples are dropped on purpose: at 30×14 px a rare gap is
+    /// imperceptible, unlike in the popover sparkline which breaks lines.
     private static func menuBarGraph(from values: [Double?]) -> NSImage? {
         let present = values.compactMap { value -> Double? in
             guard let value, value.isFinite else { return nil }

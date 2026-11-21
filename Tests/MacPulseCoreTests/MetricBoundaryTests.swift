@@ -73,9 +73,23 @@ func testNetworkCounterAccumulatorKeepsTotalsWhenAllInterfacesDepartAndRejoin() 
     expect(totals?.sentBytes == 300, "all-depart retirement keeps both interfaces' accumulated bytes")
 }
 
+func testSparklineSegmentsBreakAtMissingSamples() {
+    let segments = MemoryTrendGeometry.normalizedSegments(for: [1024, nil, 10_000_000], percentDomain: false)
+    expect(segments.count == 2, "a missing sample splits the sparkline into two segments")
+    expect(segments.allSatisfy { !$0.isEmpty && $0.allSatisfy { $0.x.isFinite && $0.y.isFinite } },
+           "every segment keeps finite points")
+    expect((segments.last?.first?.y ?? 1) < 0.01, "the largest rate still reaches the top of the sparkline")
+    expect((segments.first?.first?.y ?? 0) > 0.9, "small rates stay near the baseline")
+    expect(MemoryTrendGeometry.normalizedSegments(for: [nil, nil], percentDomain: false).isEmpty,
+           "sparklines with no usable values render nothing")
+    expect(MemoryTrendGeometry.normalizedSegments(for: [100, 50], percentDomain: false).count == 1,
+           "sparklines without gaps stay one segment")
+}
+
 func runMetricBoundaryTests() {
     testDecodesHighBitProcessorTicksWithoutSignedOverflow()
     testMemoryTrendGeometryHandlesEmptySinglePointAndFlatValues()
+    testSparklineSegmentsBreakAtMissingSamples()
 }
 
 func testNetworkCounterAccumulatorUnwrapsEachInterfaceBeforeSumming() {

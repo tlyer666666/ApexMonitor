@@ -525,7 +525,9 @@ public struct MetricsAggregator {
         return completed
     }
 
-    public mutating func flush(at date: Date) -> MinuteBucket? {
+    /// Emits the pending minute as-is and resets; the emitted bucket keeps
+    /// whatever samples actually arrived, without inventing coverage.
+    public mutating func flush() -> MinuteBucket? {
         guard let current = minuteStart, sampleCount > 0 else { return nil }
         let bucket = makeBucket(for: current)
         reset()

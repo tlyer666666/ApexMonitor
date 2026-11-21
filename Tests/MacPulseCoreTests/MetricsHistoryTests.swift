@@ -41,14 +41,14 @@ func testAggregatorEmitsBucketWhenMinuteRolls() {
 func testAggregatorFlushEmitsPartialBucketWithoutLosingData() {
     var aggregator = MetricsAggregator()
     _ = aggregator.append(makeSnapshot(cpu: 20, memory: 40), at: historyBase.addingTimeInterval(30))
-    let partial = aggregator.flush(at: historyBase.addingTimeInterval(40))
+    let partial = aggregator.flush()
     guard let bucket = partial else {
         expect(false, "flush emits the partial minute bucket")
         return
     }
     expect(bucket.sampleCount == 1, "partial bucket contains the samples seen so far")
     expectNear(bucket.cpuAverage, 20, "partial bucket keeps its own average")
-    expect(aggregator.flush(at: historyBase.addingTimeInterval(41)) == nil, "flushing twice emits nothing more")
+    expect(aggregator.flush() == nil, "flushing twice emits nothing more")
 }
 
 func testMergedBucketsCombinesDuplicateMinutes() {
@@ -214,7 +214,7 @@ private func trafficBucket(_ rates: [Double?], offset: Double = 0, start: Date =
             at: start.addingTimeInterval(offset + Double(index))
         )
     }
-    return aggregator.flush(at: start.addingTimeInterval(60))!
+    return aggregator.flush()!
 }
 
 private func bucketTraffic(_ buckets: [MinuteBucket]) -> TrafficStatistics {
@@ -321,7 +321,7 @@ func testActualDurationsIntegrateIndependentlyOfSpacingAndCounts() throws {
     let second = makeSnapshot(cpu: nil, memory: 40, diskRead: nil, diskWrite: 200, netRx: nil, netTx: 200, duration: 0.5)
     _ = aggregator.append(first, at: historyBase.addingTimeInterval(10.25))
     _ = aggregator.append(second, at: historyBase.addingTimeInterval(10.75))
-    let bucket = aggregator.flush(at: historyBase.addingTimeInterval(11))!
+    let bucket = aggregator.flush()!
     let metadata = bucket.metadata!
     expect(metadata.cpu.validCount == 1 && metadata.memory.validCount == 1, "each gauge retains its independent valid count")
     expect(metadata.diskRead.validCount == 1 && metadata.diskWrite.validCount == 1, "each disk direction retains its independent valid count")
@@ -351,7 +351,7 @@ func testInvalidDurationsAndRatesNeverCreateTraffic() {
         var aggregator = MetricsAggregator()
         let snapshot = makeSnapshot(cpu: 10, netRx: 100, netTx: 200, duration: duration)
         _ = aggregator.append(snapshot, at: historyBase.addingTimeInterval(30))
-        let bucket = aggregator.flush(at: historyBase.addingTimeInterval(31))!
+        let bucket = aggregator.flush()!
         let stats = bucketTraffic([bucket])
         expect(stats.receivedBytes == nil && stats.sentBytes == nil, "invalid durations cannot integrate traffic")
         expectNear(stats.coverageSeconds, 0, "invalid durations supply no covered time")
@@ -441,7 +441,7 @@ func testCurrentBucketPreviewDoesNotConsumeOrDuplicateSamples() {
     _ = aggregator.append(makeSnapshot(cpu: 30, netRx: 300, netTx: nil), at: historyBase.addingTimeInterval(11))
     expect(aggregator.currentBucket?.sampleCount == 2, "append continues the same bucket after preview")
     expectNear(aggregator.currentBucket?.metadata?.networkReceive.totalBytes, 400, "preview does not duplicate integrated bytes")
-    let flushed = aggregator.flush(at: historyBase.addingTimeInterval(12))
+    let flushed = aggregator.flush()
     expect(flushed?.sampleCount == 2, "flush still emits every previewed sample exactly once")
     expect(aggregator.currentBucket == nil, "flush clears the preview")
     _ = aggregator.append(makeSnapshot(cpu: 50), at: historyBase.addingTimeInterval(20))
@@ -453,7 +453,7 @@ func testCurrentBucketPreviewDoesNotConsumeOrDuplicateSamples() {
 func testHistoryMetadataCannotContradictTopLevelFields() throws {
     var aggregator = MetricsAggregator()
     _ = aggregator.append(makeSnapshot(cpu: 10), at: historyBase.addingTimeInterval(30))
-    let bucket = aggregator.flush(at: historyBase.addingTimeInterval(31))!
+    let bucket = aggregator.flush()!
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
 
@@ -601,6 +601,28 @@ func testSeriesAfterClockRollbackMatchesReloadedSeries() {
            "live and reloaded series agree on traffic totals after a clock rollback")
 }
 
+func testSmallClockStepsClampInsteadOfDiscardingDetail() {
+    let base = Date(timeIntervalSince1970: 1_800_002_400)
+    func snapshot(cpu: Double, receive: Double) -> MetricsSnapshot {
+        MetricsSnapshot(timestamp: 1, cpuPercent: cpu, memoryUsedBytes: 1, memoryTotalBytes: 2,
+                        memoryPercent: 50, diskReadBytesPerSecond: nil, diskWriteBytesPerSecond: nil,
+                        networkReceiveBytesPerSecond: receive, networkSendBytesPerSecond: nil,
+                        sampleDurationSeconds: 1)
+    }
+    var recorder = HistoryRecorder()
+    recorder.record(snapshot(cpu: 10, receive: 100), at: base.addingTimeInterval(30))
+    recorder.record(snapshot(cpu: 20, receive: 200), at: base.addingTimeInterval(29.5))
+
+    expect(recorder.recentSamples.count == 2, "a small wall-clock step keeps the detail buffer")
+    expect(recorder.sessionBuckets.isEmpty, "a small wall-clock step completes no minute bucket")
+    expect(recorder.recentSamples.last?.date == base.addingTimeInterval(30),
+           "a small step clamps to the previous record time")
+    let preview = recorder.buckets(at: base.addingTimeInterval(31))
+    expect(preview.count == 1 && preview.first?.sampleCount == 2,
+           "the clamped sample lands in the same minute bucket")
+    expectNear(preview.first?.cpuAverage ?? -1, 15, "the clamped sample still contributes to the aggregate")
+}
+
 func testRetentionKeepsMinutesStillOverlappingTheWindowEdge() {
     let now = historyBase.addingTimeInterval(8 * 86_400)
     let cutoff = now.addingTimeInterval(-HistoryAnalyzer.retentionSeconds)
@@ -651,4 +673,5 @@ func runMetricsHistoryTests() throws {
     testRateGeometryKeepsRealSpeedVariation()
     testSeriesAfterClockRollbackMatchesReloadedSeries()
     testRetentionKeepsMinutesStillOverlappingTheWindowEdge()
+    testSmallClockStepsClampInsteadOfDiscardingDetail()
 }

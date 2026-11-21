@@ -13,7 +13,7 @@ struct RecorderTests {
         let base = Date(timeIntervalSince1970: 1_700_006_400)
         var aggregator = MetricsAggregator()
         _ = aggregator.append(sample(20, 100), at: base.addingTimeInterval(10))
-        let restored = aggregator.flush(at: base.addingTimeInterval(11))!
+        let restored = aggregator.flush()!
         var recorder = HistoryRecorder()
         recorder.restore([restored], now: base.addingTimeInterval(20))
         recorder.record(sample(40, 200), at: base.addingTimeInterval(20))
@@ -31,9 +31,9 @@ struct RecorderTests {
         let rolledBack = recorder.series(for: .fiveMinutes, now: base.addingTimeInterval(66))
         guard rolledBack.points.allSatisfy({ $0.date <= base.addingTimeInterval(66) }) else { exit(1) }
         print("PASS: backward wall clocks cannot include future samples")
-        recorder.flush(at: base.addingTimeInterval(121))
+        recorder.flush()
         let before = recorder.sessionBuckets.count
-        recorder.flush(at: base.addingTimeInterval(122))
+        recorder.flush()
         guard recorder.sessionBuckets.count == before else { exit(1) }
         print("PASS: repeated recorder flush is idempotent")
 

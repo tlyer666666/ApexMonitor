@@ -14,13 +14,13 @@ struct SeriesChart: View {
 
     var body: some View {
         Canvas { context, size in
+            // Inputs arrive pre-downsampled (HistoryChartCard caps at 600);
+            // zip keeps each date aligned with its value.
             let resolved = series.map { input in
-                HistoryAnalyzer.downsampleIndices(count: input.values.count, maxPoints: 600)
-                    .map { index -> (date: Date, value: Double?) in
-                        let raw = input.values[index]
-                        let cleaned = raw.flatMap { $0.isFinite ? max($0, 0) : nil }
-                        return (input.dates[index], cleaned)
-                    }
+                zip(input.dates, input.values).map { date, raw -> (date: Date, value: Double?) in
+                    let cleaned = raw.flatMap { $0.isFinite ? max($0, 0) : nil }
+                    return (date, cleaned)
+                }
             }
             guard resolved.contains(where: { !$0.isEmpty }) else { return }
             let maxValue = domainMax(from: resolved)
@@ -228,7 +228,7 @@ struct MiniSparkline: View {
     var percentDomain: Bool = true
 
     var body: some View {
-        MemoryTrendShape(values: values.compactMap { $0 }, percentDomain: percentDomain)
+        MemoryTrendShape(values: values, percentDomain: percentDomain)
             .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
             .frame(height: DesignSystem.Chart.sparkline)
     }

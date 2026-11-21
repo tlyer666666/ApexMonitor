@@ -43,22 +43,25 @@ struct MetricRow: View {
 }
 
 struct MemoryTrendShape: Shape {
-    let values: [Double]
+    let values: [Double?]
     var percentDomain: Bool = true
 
     func path(in rect: CGRect) -> Path {
-        let normalized = MemoryTrendGeometry.normalizedPoints(for: values, percentDomain: percentDomain)
-        guard !normalized.isEmpty else { return Path() }
-        let points = normalized.map { point in
-            CGPoint(
-                x: rect.minX + rect.width * CGFloat(point.x),
-                y: rect.minY + rect.height * CGFloat(point.y)
-            )
-        }
         var path = Path()
-        path.move(to: points[0])
-        for point in points.dropFirst() {
-            path.addLine(to: point)
+        for segment in MemoryTrendGeometry.normalizedSegments(for: values, percentDomain: percentDomain) {
+            let points = segment.map { point in
+                CGPoint(
+                    x: rect.minX + rect.width * CGFloat(point.x),
+                    y: rect.minY + rect.height * CGFloat(point.y)
+                )
+            }
+            guard let first = points.first else { continue }
+            // One sub-path per run: a missing sample breaks the line rather
+            // than bridging the gap with a fabricated trend.
+            path.move(to: first)
+            for point in points.dropFirst() {
+                path.addLine(to: point)
+            }
         }
         return path
     }

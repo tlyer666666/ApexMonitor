@@ -96,7 +96,7 @@ final class MonitorStore: ObservableObject {
         sampler.stop()
         pathMonitor?.cancel()
         pathMonitor = nil
-        history.flush(at: Date())
+        history.flush()
         let result = repository.saveAndWait(session: history.sessionBuckets, now: Date())
         historyError = result.error
     }
