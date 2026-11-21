@@ -1,13 +1,13 @@
 import Foundation
 
 enum DetailReading: Sendable {
-    case processes([RawProcessSample], LoadAverage?)
+    case processes([RawProcessSample], LoadAverage?, ProcessInfo.ThermalState)
     case volumes([VolumeSpace])
     case interfaces([InterfaceDetail])
 }
 
 enum DetailSample: Sendable {
-    case processes(ProcessSummary, LoadAverage?)
+    case processes(ProcessSummary, LoadAverage?, ProcessInfo.ThermalState)
     case volumes([VolumeSpace])
     case interfaces([InterfaceDetail])
 }
@@ -59,7 +59,8 @@ final class DetailSampler {
     nonisolated private static func readSystem(_ category: MetricCategory) -> DetailReading {
         switch category {
         case .cpu, .memory:
-            return .processes(ProcessSampler().read(), SystemDetailReader.loadAverage())
+            return .processes(ProcessSampler().read(), SystemDetailReader.loadAverage(),
+                              ProcessInfo.processInfo.thermalState)
         case .disk:
             return .volumes(VolumeSpaceReader.read())
         case .network:
@@ -80,8 +81,8 @@ private final class DetailWorker: @unchecked Sendable {
 
     func sample(_ category: MetricCategory) -> DetailSample {
         switch read(category) {
-        case let .processes(samples, load):
-            return .processes(table.update(samples, at: ProcessInfo.processInfo.systemUptime), load)
+        case let .processes(samples, load, thermal):
+            return .processes(table.update(samples, at: ProcessInfo.processInfo.systemUptime), load, thermal)
         case let .volumes(volumes):
             return .volumes(volumes)
         case let .interfaces(interfaces):

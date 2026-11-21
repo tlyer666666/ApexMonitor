@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.toolTip = L10n.tr("MacPulse 系统性能（左键弹层 · 右键菜单）", "MacPulse (left-click popover · right-click menu)")
         button.target = self
         button.action = #selector(statusItemClicked(_:))
+        button.toolTip = L10n.tr("MacPulse 系统性能（左键弹层 · 右键菜单）", "MacPulse (left-click popover · right-click menu)")
         // Deliver right-clicks to the action so a context menu can be shown.
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }

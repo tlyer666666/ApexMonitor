@@ -13,6 +13,14 @@ func testFormatterMarkersStayChinese() {
     expect(L10n.Formatter.memoryFallback == "物理内存", "memory fallback stays Chinese")
 }
 
+func testThermalStateLabelsAreLocalized() {
+    expect(L10n.Details.thermalState(.nominal) == "正常", "nominal thermal state stays Chinese")
+    expect(L10n.Details.thermalState(.fair) == "轻度受压", "fair thermal state stays Chinese")
+    expect(L10n.Details.thermalState(.serious) == "中度受压", "serious thermal state stays Chinese")
+    expect(L10n.Details.thermalState(.critical) == "高度受压", "critical thermal state stays Chinese")
+    expect(L10n.Details.thermalStateNote(.nominal).isEmpty == false, "thermal notes explain themselves")
+}
+
 func testDashboardCadenceTextReflectsConfiguredInterval() {
     expect(L10n.Dashboard.updateCadence(1) == "每秒更新", "one-second cadence keeps the every-second wording")
     expect(L10n.Dashboard.updateCadence(2) == "每 2 秒更新", "two-second cadence names its interval")
@@ -23,5 +31,6 @@ func testDashboardCadenceTextReflectsConfiguredInterval() {
 func runL10nTests() {
     testStringsAreSimplifiedChineseOnly()
     testFormatterMarkersStayChinese()
+    testThermalStateLabelsAreLocalized()
     testDashboardCadenceTextReflectsConfiguredInterval()
 }

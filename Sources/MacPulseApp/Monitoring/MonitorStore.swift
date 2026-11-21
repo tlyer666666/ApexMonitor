@@ -13,6 +13,8 @@ final class MonitorStore: ObservableObject {
     @Published private(set) var runtimeTotals: NetworkCounterTotals?
     @Published private(set) var pathStatus: NetworkPathStatus?
     @Published private(set) var loadAverage: LoadAverage?
+    /// System thermal pressure, sampled with the process detail session.
+    @Published private(set) var thermalState: ProcessInfo.ThermalState = .nominal
     @Published private(set) var historyError: String?
     @Published private(set) var lastUpdateDate: Date?
     /// Mirrors the configured cadence so views can describe it truthfully.
@@ -149,9 +151,10 @@ final class MonitorStore: ObservableObject {
         detailSampler.start(category) { [weak self] result in
             guard let self else { return }
             switch result {
-            case let .processes(summary, load):
+            case let .processes(summary, load, thermal):
                 self.processSummary = summary
                 self.loadAverage = load
+                self.thermalState = thermal
             case let .volumes(volumes):
                 self.volumes = volumes
             case let .interfaces(interfaces):

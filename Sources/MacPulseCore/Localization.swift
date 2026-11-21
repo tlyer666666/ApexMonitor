@@ -110,12 +110,34 @@ public enum L10n {
         public static var runtimeTotals: String { tr("本次运行累计", "Since launch") }
         public static var connected: String { tr("已连接", "Connected") }
         public static var disconnected: String { tr("未连接", "Disconnected") }
+        public static var loopbackInterface: String { tr("回环", "Loopback") }
+        public static var tunnelInterface: String { tr("隧道/虚拟", "Tunnel/Virtual") }
+        public static var bridgeInterface: String { tr("桥接", "Bridge") }
         public static var cpuBreakdown: String { tr("处理器分解", "CPU Breakdown") }
         public static var user: String { tr("用户", "User") }
         public static var system: String { tr("系统", "System") }
         public static var nice: String { tr("友好", "Nice") }
         public static var idle: String { tr("空闲", "Idle") }
         public static var loadAverage: String { tr("负载均值", "Load Average") }
+        public static var thermalStateCard: String { tr("热状态", "Thermal State") }
+        public static func thermalState(_ state: ProcessInfo.ThermalState) -> String {
+            switch state {
+            case .nominal: return tr("正常", "Nominal")
+            case .fair: return tr("轻度受压", "Fair")
+            case .serious: return tr("中度受压", "Serious")
+            case .critical: return tr("高度受压", "Critical")
+            @unknown default: return tr("未知", "Unknown")
+            }
+        }
+        public static func thermalStateNote(_ state: ProcessInfo.ThermalState) -> String {
+            switch state {
+            case .nominal: return tr("系统散热正常，性能不受限制。", "Cooling is normal; performance is unrestricted.")
+            case .fair: return tr("散热压力略升，性能暂未受限。", "Slight thermal pressure; performance is not limited yet.")
+            case .serious: return tr("散热压力较大，性能可能已被限制。", "Significant thermal pressure; performance may be limited.")
+            case .critical: return tr("散热严重受限，性能大幅降低。", "Severe thermal restriction; performance is reduced.")
+            @unknown default: return tr("系统报告了未知的热状态。", "The system reported an unknown thermal state.")
+            }
+        }
         public static func minutes(_ n: Int) -> String { tr("\(n) 分钟", "\(n) min") }
         public static var singleCoreNote: String { tr("CPU% 以单核 100% 为基准", "CPU% is normalized to one core = 100%") }
     }

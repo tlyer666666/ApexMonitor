@@ -358,15 +358,31 @@ struct InterfaceRow: View {
     let interface: InterfaceDetail
     let runtime: NetworkInterfaceCounters?
 
+    private var statusLabel: String {
+        switch interface.kind {
+        case .loopback: return L10n.Details.loopbackInterface
+        case .tunnel: return L10n.Details.tunnelInterface
+        case .bridge: return L10n.Details.bridgeInterface
+        case .physical: return interface.isConnected ? L10n.Details.connected : L10n.Details.disconnected
+        }
+    }
+
+    private var statusColor: Color {
+        if interface.isLinkState {
+            return interface.isConnected ? Color.green : Color.gray.opacity(0.5)
+        }
+        return Color.gray.opacity(0.45)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(interface.isConnected ? Color.green : Color.gray.opacity(0.5))
+                    .fill(statusColor)
                     .frame(width: 8, height: 8)
                 Text(interface.name)
                     .font(.system(.callout, design: .rounded).weight(.semibold))
-                Text(interface.isConnected ? L10n.Details.connected : L10n.Details.disconnected)
+                Text(statusLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -419,6 +435,20 @@ struct CPUDetailView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                DetailCard(title: L10n.Details.thermalStateCard) {
+                    let state = store.thermalState
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(state == .nominal ? Color.green : (state == .fair ? Color.orange : Color.red))
+                            .frame(width: 9, height: 9)
+                        Text(L10n.Details.thermalState(state))
+                            .font(.system(.body, design: .rounded).weight(.medium))
+                    }
+                    Text(L10n.Details.thermalStateNote(state))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 DetailCard(title: L10n.Details.topProcessesBy(columnTitle(order.column))) {

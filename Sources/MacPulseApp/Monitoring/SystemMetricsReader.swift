@@ -3,6 +3,23 @@ import Foundation
 import IOKit
 import IOKit.storage
 
+/// Interface categories: only physical links carry the connected/disconnected
+/// state; loopback, tunnels and bridges always render with their own label.
+enum InterfaceKind: Sendable, Equatable {
+    case physical
+    case loopback
+    case tunnel
+    case bridge
+
+    static func classify(name: String) -> InterfaceKind {
+        if name == "lo0" { return .loopback }
+        if name.hasPrefix("utun") || name == "gif0" || name == "stf0"
+            || name == "awdl0" || name == "llw0" { return .tunnel }
+        if name.hasPrefix("bridge") || name == "ap1" { return .bridge }
+        return .physical
+    }
+}
+
 struct InterfaceDetail: Sendable, Equatable, Identifiable {
     let name: String
     let isUp: Bool
@@ -11,7 +28,11 @@ struct InterfaceDetail: Sendable, Equatable, Identifiable {
     let ipv6: [String]
 
     var id: String { name }
-    var isConnected: Bool { isUp && isRunning }
+    var kind: InterfaceKind { InterfaceKind.classify(name: name) }
+    /// Loopback, tunnels and bridges are infrastructure, never a real link
+    /// state: reporting lo0 as "connected" would be misleading.
+    var isConnected: Bool { kind == .physical && isUp && isRunning }
+    var isLinkState: Bool { kind == .physical }
 }
 
 struct SystemMetricsReader {
