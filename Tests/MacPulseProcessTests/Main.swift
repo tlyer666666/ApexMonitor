@@ -52,19 +52,42 @@ private func referencePIDs() throws -> [pid_t] {
     throw ProcessTestError.invalidByteCapacity
 }
 
+private func referenceTimebase() -> (numer: UInt32, denom: UInt32) {
+    var info = mach_timebase_info_data_t()
+    guard mach_timebase_info(&info) == KERN_SUCCESS, info.denom > 0 else {
+        return (1, 1)
+    }
+    return (info.numer, info.denom)
+}
+
+private func referenceTicksToNanoseconds(_ ticks: UInt64, numer: UInt32, denom: UInt32) -> UInt64? {
+    guard denom > 0 else { return nil }
+    let n = UInt64(numer)
+    let d = UInt64(denom)
+    let q = (ticks / d).multipliedReportingOverflow(by: n)
+    guard !q.overflow else { return nil }
+    let r = ((ticks % d) * n) / d
+    let total = q.partialValue.addingReportingOverflow(r)
+    return total.overflow ? nil : total.partialValue
+}
+
 private func referenceSameUserProcesses() throws -> [pid_t: ReferenceProcess] {
     var result: [pid_t: ReferenceProcess] = [:]
     let size = Int32(MemoryLayout<proc_taskallinfo>.size)
+    let (numer, denom) = referenceTimebase()
     for pid in try referencePIDs() {
         var info = proc_taskallinfo()
         guard proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &info, size) == size,
               info.pbsd.pbi_uid == geteuid() else { continue }
         let cpu = info.ptinfo.pti_total_user.addingReportingOverflow(info.ptinfo.pti_total_system)
-        guard !cpu.overflow else { continue }
+        guard !cpu.overflow,
+              let cpuNanoseconds = referenceTicksToNanoseconds(cpu.partialValue, numer: numer, denom: denom) else {
+            continue
+        }
         result[pid] = ReferenceProcess(
             startSeconds: info.pbsd.pbi_start_tvsec,
             startMicroseconds: info.pbsd.pbi_start_tvusec,
-            cpuNanoseconds: cpu.partialValue
+            cpuNanoseconds: cpuNanoseconds
         )
     }
     return result
@@ -86,6 +109,21 @@ private struct ProcessTests {
                 fputs("FAIL: \(message)\n", stderr)
             }
         }
+
+        check(ProcessSampler.machTicksToNanoseconds(24_000_000, numer: 125, denom: 3) == 1_000_000_000,
+              "Apple Silicon 125/3 timebase converts 24M ticks into exactly 1 second in nanoseconds")
+        check(ProcessSampler.machTicksToNanoseconds(1, numer: 125, denom: 3) == 41,
+              "non-1:1 timebase preserves remainder precision for small tick counts")
+        check(ProcessSampler.machTicksToNanoseconds(500_000_000, numer: 1, denom: 1) == 500_000_000,
+              "1/1 timebase leaves tick values unchanged")
+        // Verify large tick counts where `ticks * numer` would overflow UInt64 still convert safely.
+        let largeTicks: UInt64 = 300_000_000_000_000_000 // > UInt64.max / 125, but (ticks/3)*125 < UInt64.max
+        check(ProcessSampler.machTicksToNanoseconds(largeTicks, numer: 125, denom: 3) == 12_500_000_000_000_000_000,
+              "overflow-safe timebase conversion handles tick counts where naive ticks*numer overflows")
+        check(ProcessSampler.machTicksToNanoseconds(UInt64.max, numer: 125, denom: 3) == nil,
+              "truly overflowing timebase conversion returns nil instead of trapping")
+        check(ProcessSampler.machTicksToNanoseconds(100, numer: 125, denom: 0) == nil,
+              "zero timebase denominator returns nil safely")
 
         do {
             let before = try referenceSameUserProcesses()

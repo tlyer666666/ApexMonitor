@@ -10,22 +10,27 @@ DESTINATION="$INSTALL_DIR/$APP_NAME.app"
 SOURCE="$ROOT/dist/$APP_NAME.app"
 IDENTIFIER="com.macpulse.monitor"
 
-if [[ -e "$DESKTOP_LINK" && ! -L "$DESKTOP_LINK" ]]; then
-    printf 'error: refusing to replace existing Desktop item: %s\n' "$DESKTOP_LINK" >&2
-    exit 1
-fi
-if [[ -L "$DESKTOP_LINK" && "$(readlink "$DESKTOP_LINK")" != "$DESTINATION" ]]; then
-    printf 'error: Desktop shortcut points elsewhere: %s\n' "$DESKTOP_LINK" >&2
-    exit 1
-fi
-if [[ -e "$DESTINATION" || -L "$DESTINATION" ]]; then
-    if [[ -L "$DESTINATION" ]] || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DESTINATION/Contents/Info.plist" 2>/dev/null || true)" != "$IDENTIFIER" ]]; then
-        printf 'error: refusing to replace unrelated install destination: %s\n' "$DESTINATION" >&2
+verify_targets() {
+    if [[ -e "$DESKTOP_LINK" && ! -L "$DESKTOP_LINK" ]]; then
+        printf 'error: refusing to replace existing Desktop item: %s\n' "$DESKTOP_LINK" >&2
         exit 1
     fi
-fi
+    if [[ -L "$DESKTOP_LINK" && "$(readlink "$DESKTOP_LINK")" != "$DESTINATION" ]]; then
+        printf 'error: Desktop shortcut points elsewhere: %s\n' "$DESKTOP_LINK" >&2
+        exit 1
+    fi
+    if [[ -e "$DESTINATION" || -L "$DESTINATION" ]]; then
+        if [[ -L "$DESTINATION" ]] || [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DESTINATION/Contents/Info.plist" 2>/dev/null || true)" != "$IDENTIFIER" ]]; then
+            printf 'error: refusing to replace unrelated install destination: %s\n' "$DESTINATION" >&2
+            exit 1
+        fi
+    fi
+}
+
+verify_targets
 
 "$ROOT/Scripts/package-app.sh"
+verify_targets
 plutil -lint "$SOURCE/Contents/Info.plist"
 [[ -x "$SOURCE/Contents/MacOS/$APP_NAME" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$SOURCE/Contents/Info.plist")" == "$IDENTIFIER" ]]
@@ -59,6 +64,7 @@ cleanup() {
 trap cleanup EXIT
 cp -R "$SOURCE" "$STAGING/$APP_NAME.app"
 plutil -lint "$STAGING/$APP_NAME.app/Contents/Info.plist"
+verify_targets
 if [[ -d "$DESTINATION" ]]; then
     mv "$DESTINATION" "$BACKUP"
 fi

@@ -73,4 +73,6 @@ fi
     "$CONTENTS/Info.plist"
 
 plutil -lint "$CONTENTS/Info.plist"
+codesign --force --deep --sign "${CODESIGN_IDENTITY:--}" "$APP"
+codesign --verify --deep --strict "$APP"
 printf 'Packaged %s (%s build %s)\n' "$APP" "$VERSION" "$BUILD"

@@ -34,20 +34,26 @@ jobs:
       - name: Resolve version from tag
         run: echo "MACPULSE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Package app bundle
-        run: Scripts/package-app.sh
-
-      - name: Build DMG
+      - name: Build app bundle and DMG
         run: Scripts/make-dmg.sh
 
-      - name: Upload DMG artifact
+      - name: Generate SHA-256 checksums
+        run: |
+          (cd dist && shasum -a 256 MacPulse.dmg > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload DMG and checksum artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MacPulse-${{ github.ref_name }}.dmg
-          path: dist/MacPulse.dmg
+          name: MacPulse-${{ github.ref_name }}
+          path: |
+            dist/MacPulse.dmg
+            dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/MacPulse.dmg
+          files: |
+            dist/MacPulse.dmg
+            dist/SHA256SUMS.txt
           generate_release_notes: true

@@ -67,6 +67,8 @@ final class MonitorStore: ObservableObject {
                 self.historyRevision &+= 1
             }
         }
+        sampler.updateInterval(interval)
+        updateInterval = interval
         sampler.start { [weak self] snapshot, counterTotals, perInterface, date in
             guard let self, self.isRunning, self.lifecycle == token else { return }
             let completed = self.history.record(snapshot, at: date)
@@ -83,8 +85,6 @@ final class MonitorStore: ObservableObject {
                 }
             }
         }
-        sampler.updateInterval(interval)
-        updateInterval = interval
         pathMonitor = NetworkPathMonitor { [weak self] status in
             Task { @MainActor [weak self] in
                 guard let self, self.isRunning, self.lifecycle == token else { return }

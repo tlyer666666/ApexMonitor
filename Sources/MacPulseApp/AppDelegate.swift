@@ -220,23 +220,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let points = CGFloat(30)
         let height = CGFloat(14)
-        let image = NSImage(size: NSSize(width: points, height: height))
-        image.lockFocus()
-        NSColor.black.setStroke()
-        NSColor.black.setFill()
-        let step = points / CGFloat(tail.count - 1)
-        let baseline = height - 1
-        let usable = height - 2
-        let path = NSBezierPath()
-        path.lineWidth = 1
-        path.move(to: NSPoint(x: 0, y: baseline - CGFloat((tail.first ?? 0) / peak) * usable))
-        for (index, value) in tail.enumerated().dropFirst() {
-            let x = CGFloat(index) * step
-            let y = baseline - CGFloat(value / peak) * usable
-            path.line(to: NSPoint(x: x, y: y))
+        let samples = Array(tail)
+        let image = NSImage(size: NSSize(width: points, height: height), flipped: false) { _ in
+            NSColor.black.setStroke()
+            NSColor.black.setFill()
+            let step = points / CGFloat(samples.count - 1)
+            let usable = height - 2
+            let path = NSBezierPath()
+            path.lineWidth = 1
+            for (index, value) in samples.enumerated() {
+                let clampedRatio = min(max(value / peak, 0), 1)
+                let x = CGFloat(index) * step
+                let y = 1 + CGFloat(clampedRatio) * usable
+                if index == 0 {
+                    path.move(to: NSPoint(x: x, y: y))
+                } else {
+                    path.line(to: NSPoint(x: x, y: y))
+                }
+            }
+            path.stroke()
+            return true
         }
-        path.stroke()
-        image.unlockFocus()
         image.isTemplate = true
         return image
     }

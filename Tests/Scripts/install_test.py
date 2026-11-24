@@ -103,3 +103,30 @@ with tempfile.TemporaryDirectory(prefix="macpulse-install-test-") as directory:
     assert not list((home / "Applications").glob(".macpulse-install.*")), "cleanup must remove the staging directory"
     assert "Installed" not in result.stdout, "a failed swap must not print success"
     print("PASS: a failed swap aborts and restores the previous install")
+
+    # Simulate a TOCTOU swap during package-app.sh: an unrelated app appears at
+    # the destination while packaging is running; install.sh must re-verify and refuse.
+    home = temporary / "toctou-foreign-app"
+    (home / "Applications").mkdir(parents=True)
+    toctou_project = temporary / "toctou-project"
+    (toctou_project / "Scripts").mkdir(parents=True)
+    shutil.copy2(root / "Scripts/install.sh", toctou_project / "Scripts/install.sh")
+    bundle(toctou_project / "dist/MacPulse.app")
+    toctou_stub = toctou_project / "Scripts/package-app.sh"
+    toctou_stub.write_text(
+        "#!/bin/sh\n"
+        'mkdir -p "$HOME/Applications/MacPulse.app/Contents/MacOS"\n'
+        'cat > "$HOME/Applications/MacPulse.app/Contents/Info.plist" <<EOF\n'
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>example.other-app</string></dict></plist>\n'
+        'EOF\n'
+        "exit 0\n"
+    )
+    toctou_stub.chmod(0o755)
+    result = subprocess.run(["bash", str(toctou_project / "Scripts/install.sh")],
+                            env=os.environ | {"HOME": str(home)},
+                            capture_output=True, text=True)
+    assert result.returncode != 0, "installer must re-verify destination after package-app.sh"
+    assert plistlib.loads((home / "Applications/MacPulse.app/Contents/Info.plist").read_bytes())["CFBundleIdentifier"] == "example.other-app"
+    print("PASS: destination re-verification after packaging preserves an unrelated app")

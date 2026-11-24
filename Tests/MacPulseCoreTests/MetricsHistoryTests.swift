@@ -642,6 +642,47 @@ func testRetentionKeepsMinutesStillOverlappingTheWindowEdge() {
            "a minute that ended before the cutoff is dropped")
 }
 
+func testHistoryFileStoreRejectsSymlinks() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("macpulse-symlink-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let target = directory.appendingPathComponent("target.json")
+    try Data("[]".utf8).write(to: target)
+    let store = HistoryFileStore(directory: directory)
+    try FileManager.default.createSymbolicLink(at: store.fileURL, withDestinationURL: target)
+
+    var threw = false
+    do {
+        _ = try store.read()
+    } catch {
+        threw = true
+    }
+    expect(threw, "history file store refuses to follow symlinks on read")
+}
+
+func testSeriesPointsRemainSortedChronologicallyWithMixedDetailAndNonDetailMinutes() {
+    let base = Date(timeIntervalSince1970: 1_800_003_600)
+    func snapshot(cpu: Double) -> MetricsSnapshot {
+        MetricsSnapshot(timestamp: 1, cpuPercent: cpu, memoryUsedBytes: 1, memoryTotalBytes: 2,
+                        memoryPercent: 50, diskReadBytesPerSecond: nil, diskWriteBytesPerSecond: nil,
+                        networkReceiveBytesPerSecond: 0, networkSendBytesPerSecond: 0,
+                        sampleDurationSeconds: 1)
+    }
+    var recorder = HistoryRecorder()
+    // Record in minute +3, then roll back to minute +0, so minute +3 is in nonDetailMinutes
+    // while minutes +1 and +2 have per-second detail points.
+    recorder.record(snapshot(cpu: 90), at: base.addingTimeInterval(185))
+    recorder.record(snapshot(cpu: 10), at: base.addingTimeInterval(10))
+    recorder.record(snapshot(cpu: 20), at: base.addingTimeInterval(70))
+    recorder.record(snapshot(cpu: 30), at: base.addingTimeInterval(130))
+    let series = recorder.series(for: .fiveMinutes, now: base.addingTimeInterval(200))
+    let dates = series.points.map(\.date)
+    expect(dates == dates.sorted(),
+           "mixed detail and non-detail series points are strictly sorted chronologically")
+}
+
 func runMetricsHistoryTests() throws {
     testAggregatorEmitsBucketWhenMinuteRolls()
     testAggregatorFlushEmitsPartialBucketWithoutLosingData()
@@ -650,6 +691,7 @@ func runMetricsHistoryTests() throws {
     testMinuteSeriesFiltersWithinRangeAndSortsAscending()
     testStatisticsComputeAveragePeakAndMinimum()
     try testHistoryFileStoreRoundTripsAndToleratesCorruption()
+    try testHistoryFileStoreRejectsSymlinks()
     testDownsampleKeepsWindowBoundsInsteadOfTruncatingHead()
     testTrafficStatisticsIntegrateRatesOverSampleSpacing()
     testTrafficStatisticsSkipsMissingSamplesWithoutFabricating()
@@ -672,6 +714,7 @@ func runMetricsHistoryTests() throws {
     testSessionUpsertMergesFragmentsOfOneMinuteAfterRollback()
     testRateGeometryKeepsRealSpeedVariation()
     testSeriesAfterClockRollbackMatchesReloadedSeries()
+    testSeriesPointsRemainSortedChronologicallyWithMixedDetailAndNonDetailMinutes()
     testRetentionKeepsMinutesStillOverlappingTheWindowEdge()
     testSmallClockStepsClampInsteadOfDiscardingDetail()
 }

@@ -118,7 +118,8 @@ struct HistoryRecorder {
         // Replace a minute with per-second detail only when every fragment of
         // that minute lives in the current detail stream; otherwise keep the
         // canonical bucket so pre-rollback and restored data stay visible.
-        let chart = minutePoints.filter { $0.date < detailStart || nonDetailMinutes.contains($0.date) } + detail
+        let chart = (minutePoints.filter { $0.date < detailStart || nonDetailMinutes.contains($0.date) } + detail)
+            .sorted { $0.date < $1.date }
         return MetricSeries(points: chart, trafficPoints: minutePoints, spacing: 60)
     }
 
